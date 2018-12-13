@@ -13,9 +13,9 @@ public class Server {
 			
 		try {
 			Example impl = new ExampleImpl();
-			Example stub = (Example) UnicastRemoteObject.exportObject(impl, 0);
+			Example stub = (Example) UnicastRemoteObject.exportObject(impl, 50001);
 			
-			Registry registry = LocateRegistry.getRegistry();
+			Registry registry = LocateRegistry.createRegistry(30000);
 			registry.rebind("Example", stub);
 			System.out.println("Server ready...");
 		} catch (RemoteException e) {
