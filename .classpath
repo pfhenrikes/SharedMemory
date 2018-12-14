@@ -16,7 +16,7 @@
 			<attribute name="maven.pomderived" value="true"/>
 		</attributes>
 	</classpathentry>
-	<classpathentry kind="lib" path="lib/wlclient.jar"/>
-	<classpathentry kind="lib" path="lib/wljmsclient.jar"/>
+	<classpathentry kind="lib" path="lib/imq.jar"/>
+	<classpathentry kind="lib" path="lib/jms.jar"/>
 	<classpathentry kind="output" path="target/classes"/>
 </classpath>

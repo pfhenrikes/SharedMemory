@@ -1,44 +1,23 @@
 package jms;
 
-import java.util.Hashtable;
 import java.util.Timer;
 import java.util.TimerTask;
 
+import javax.jms.Connection;
 import javax.jms.JMSException;
 import javax.jms.Message;
+import javax.jms.MessageConsumer;
 import javax.jms.MessageListener;
-import javax.jms.Queue;
-import javax.jms.QueueConnection;
-import javax.jms.QueueConnectionFactory;
-import javax.jms.QueueReceiver;
-import javax.jms.QueueSender;
-import javax.jms.QueueSession;
+import javax.jms.MessageProducer;
 import javax.jms.Session;
 import javax.jms.TextMessage;
-import javax.naming.Context;
-import javax.naming.InitialContext;
 import javax.naming.NamingException;
+
+import com.sun.messaging.ConnectionConfiguration;
+import com.sun.messaging.ConnectionFactory;
  
 public class Node implements MessageListener, NodeInterface {
-
-    // connection factory
-    private QueueConnectionFactory qconFactory;
-    
-    // connection to a queue
-    private QueueConnection qcon;
-    
-    // session within a connection
-    private QueueSession qsession;
-    
-    // queue receiver that receives a message to the queue
-    private QueueReceiver qreceiver;
-    
-    // queue sender that sends a message to the queue
-    private QueueSender qsender;
-    
-    // queue where the message will be sent to
-    private Queue queue;
-    
+        
     // a message that will be sent to the queue
     private TextMessage textMsg;
     
@@ -47,20 +26,24 @@ public class Node implements MessageListener, NodeInterface {
     private String nextNode;
     
     private String previousID;
+    
+    
+    private ConnectionFactory myConnFactory;
+    private Connection myConn;
+    private com.sun.messaging.Queue myQueue;
+    private MessageConsumer receiver;
+    private MessageProducer sender;
+    private Session mySess;
+
+    
         
     public Node(String id, String previousID, String queueName) {
 		this.ID = id;
 		this.nextNode = id;
 		this.previousID = previousID;
 		
-		Hashtable<String, String> env = new Hashtable<String, String>();
-        env.put(Context.INITIAL_CONTEXT_FACTORY, Config.JNDI_FACTORY);
-        env.put(Context.PROVIDER_URL, Config.PROVIDER_URL);
-
-        InitialContext ic;
 		try {
-			ic = new InitialContext(env);
-			init(ic, queueName);
+			init(queueName);
 		} catch (NamingException | JMSException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
@@ -85,7 +68,7 @@ public class Node implements MessageListener, NodeInterface {
                 	this.textMsg.setText(this.nextNode);
                 	
                 	// send message
-                	this.qsender.send(this.textMsg);
+                	this.sender.send(this.textMsg);
                 	System.out.println("MY ID WAS SENT!");
                 	this.nextNode = msgText;
                 	System.out.println("Connected to: " + this.nextNode);
@@ -118,28 +101,31 @@ public class Node implements MessageListener, NodeInterface {
     }
     
     // create a connection to the WLS using a JNDI context
-    public void init(Context ctx, String queueName)
-            throws NamingException, JMSException {
-
-        qconFactory = (QueueConnectionFactory) ctx.lookup(Config.JMS_FACTORY);
-        qcon = qconFactory.createQueueConnection();
-        qsession = qcon.createQueueSession(false, Session.AUTO_ACKNOWLEDGE);
-        queue = (Queue) ctx.lookup(queueName);
-
-        qreceiver = qsession.createReceiver(queue, "ID = '" + this.ID + "'");
-        qreceiver.setMessageListener(this); 
+    public void init(String queueName)
+            throws NamingException, JMSException {        
        
-        qsender = qsession.createSender(queue);
-        textMsg = qsession.createTextMessage();
+        myConnFactory = new ConnectionFactory();
+        myConnFactory.setProperty(ConnectionConfiguration.imqAddressList, "192.168.56.3:7676");
+        myConn = myConnFactory.createConnection();
+        mySess = myConn.createSession(false, Session.AUTO_ACKNOWLEDGE);
+        myQueue = new com.sun.messaging.Queue(queueName);
+        
+        receiver = mySess.createConsumer(myQueue);
+        receiver.setMessageListener(this);
+        
+        sender = mySess.createProducer(myQueue);
+        textMsg = mySess.createTextMessage();
+        
+        myConn.start();
                 
-        qcon.start();
     }
     
     // close sender, connection and the session
     public void close() throws JMSException {
-        qreceiver.close();
-        qsession.close();
-        qcon.close();
+        receiver.close();
+        sender.close();
+        mySess.close();
+        myConn.close();
     }
     
     // start receiving messages from the queue
@@ -147,7 +133,7 @@ public class Node implements MessageListener, NodeInterface {
         
         textMsg.setObjectProperty("ID", "123");
         
-        System.out.println("Connected to " + queue.toString() + ", receiving messages...");
+        System.out.println("Connected to " + myQueue.toString() + ", receiving messages...");
         try {
             synchronized (this) {
                 while (true) {
@@ -169,7 +155,7 @@ public class Node implements MessageListener, NodeInterface {
 			textMsg.setObjectProperty("ID", id);
 			textMsg.setObjectProperty("LOGIN", "true");
 			textMsg.setText(this.ID);
-			qsender.send(textMsg);
+			sender.send(textMsg);
 			System.out.println("Message sent!");
 		} catch (JMSException e) {
 			e.printStackTrace();
@@ -185,12 +171,12 @@ public class Node implements MessageListener, NodeInterface {
 				textMsg.setObjectProperty("ID", this.previousID);
 				textMsg.setObjectProperty("LOGOUT", "true");
 				textMsg.setText(this.nextNode);
-				qsender.send(textMsg);
+				sender.send(textMsg);
 				textMsg.clearProperties();
 				textMsg.setObjectProperty("ID", this.nextNode);
 				textMsg.setObjectProperty("PreviousNode", "true");
 				textMsg.setText(this.previousID);
-				qsender.send(textMsg);
+				sender.send(textMsg);
 				System.out.println("Message sent!");
 			}
 			catch(Exception e) {
@@ -207,8 +193,7 @@ public class Node implements MessageListener, NodeInterface {
 	
 	public static void main(String[] args) throws Exception {
         // input arguments
-        String queueName = "jms/dsv-election" ;
-            
+        String queueName = "dsv";  
         // create the producer object and receive the message      
         Node node;
         
