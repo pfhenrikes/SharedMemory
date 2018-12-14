@@ -7,16 +7,16 @@
    <dependencies>
     <dependency>
       <groupId>weblogic</groupId>
-      <artifactId>wlclient</artifactId>
+      <artifactId>imq</artifactId>
       <version>1.0.0</version>
-      <systemPath>${basedir}/lib/wlclient.jar</systemPath>
+      <systemPath>${basedir}/lib/imq.jar</systemPath>
       <scope>system</scope>
     </dependency>
     <dependency>
       <groupId>weblogic</groupId>
-      <artifactId>wljmsclient</artifactId>
+      <artifactId>jms</artifactId>
       <version>1.0.0</version>
-      <systemPath>${basedir}/lib/wljmsclient.jar</systemPath>
+      <systemPath>${basedir}/lib/jms.jar</systemPath>
       <scope>system</scope>
     </dependency>
     </dependencies>
