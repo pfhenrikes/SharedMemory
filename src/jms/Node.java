@@ -32,7 +32,7 @@ public class Node implements MessageListener, NodeInterface {
     private Connection myConn;
     private com.sun.messaging.Queue myQueue;
     private MessageConsumer receiver;
-    private MessageProducer sender;
+    private static MessageProducer sender;
     private Session mySess;
 
     
@@ -41,6 +41,9 @@ public class Node implements MessageListener, NodeInterface {
 		this.ID = id;
 		this.nextNode = id;
 		this.previousID = previousID;
+		
+		System.out.println("ID = " + this.ID);
+		System.out.println("Previous ID = " + this.previousID);
 		
 		try {
 			init(queueName);
@@ -61,28 +64,40 @@ public class Node implements MessageListener, NodeInterface {
                 
                 // update nextNode
                 if( msg.propertyExists("LOGIN") && ((String) msg.getObjectProperty("LOGIN")).equals("true") ) {
+                	String aux = this.nextNode;
                 	// clear old properties and send new message
-                	textMsg.clearProperties();
-                	textMsg.setObjectProperty("ID", msgText);
-                	textMsg.setObjectProperty("NextNode", "true");
-                	this.textMsg.setText(this.nextNode);
+                	System.out.println("LOGIN MESSAGE RECEIVED FROM "+ msgText);
                 	
-                	// send message
-                	this.sender.send(this.textMsg);
-                	System.out.println("MY ID WAS SENT!");
                 	this.nextNode = msgText;
-                	System.out.println("Connected to: " + this.nextNode);
+                	System.out.println("LOGIN NEXTNODE UPDATED: " + this.nextNode);
+                	System.out.println("LOGIN AUX: " + aux);
+                	
+                	textMsg.clearProperties();
+                	textMsg.setObjectProperty("ID", this.nextNode);
+                	textMsg.setObjectProperty("NextNode", "true");
+                	this.textMsg.setText(aux);
+                	// send message
+                	Node.sender.send(this.textMsg);
+                	
                 }
                 
                 //update NextNode after login message sent
                 else if(msg.propertyExists("NextNode") && ((String) msg.getObjectProperty("NextNode")).equals("true") ) {
                 	this.nextNode = msgText;
-                	System.out.println("NextCode Connected to: " + this.nextNode);
+                	System.out.println("NEXTNODE NEXTNODE UPDATED: " + this.nextNode);
+                	System.out.println("SENDING NEW INFO TO NODE " + msgText);
+                	
+                	textMsg.clearProperties();
+                	textMsg.setObjectProperty("ID", msgText);
+                	textMsg.setObjectProperty("PreviousNode", "true");
+                	this.textMsg.setText(this.ID);
+                	// send message
+                	Node.sender.send(this.textMsg);
                 }
                 
                 else if(msg.propertyExists("LOGOUT") && ((String) msg.getObjectProperty("LOGOUT")).equals("true")) {
                 	this.nextNode = msgText;
-                	System.out.println("NextCode Connected to: " + this.nextNode);
+                	System.out.println("LOGOUT\nNextNode Connected to: " + this.nextNode);
                 }
                 
                 else if(msg.propertyExists("PreviousNode") && ((String) msg.getObjectProperty("PreviousNode")).equals("true")) {
@@ -133,7 +148,7 @@ public class Node implements MessageListener, NodeInterface {
         
         textMsg.setObjectProperty("ID", "123");
         
-        System.out.println("Connected to " + myQueue.toString() + ", receiving messages...");
+        //System.out.println("Connected to " + myQueue.toString() + ", receiving messages...");
         try {
             synchronized (this) {
                 while (true) {
@@ -147,16 +162,16 @@ public class Node implements MessageListener, NodeInterface {
     }
     
     
-
+    // Send this ID to previous Node so it can connect to this node
 	public void login(String id) {
-		System.out.println("Logging into " + id);
+		System.out.println("SENDING LOGIN INFO TO NODE " + id);
 		try {
 			textMsg.clearProperties();
 			textMsg.setObjectProperty("ID", id);
 			textMsg.setObjectProperty("LOGIN", "true");
 			textMsg.setText(this.ID);
 			sender.send(textMsg);
-			System.out.println("Message sent!");
+			System.out.println("Login Message sent!");
 		} catch (JMSException e) {
 			e.printStackTrace();
 			System.exit(1);
@@ -167,6 +182,7 @@ public class Node implements MessageListener, NodeInterface {
 		
 		if(this.ID != this.nextNode && this.ID != this.previousID) {
 			try {
+				System.out.println("SENDING LOGOUT TO " + this.previousID + " (previousID) AND " + this.nextNode + " (nextNode)");
 				textMsg.clearProperties();
 				textMsg.setObjectProperty("ID", this.previousID);
 				textMsg.setObjectProperty("LOGOUT", "true");
@@ -218,10 +234,34 @@ public class Node implements MessageListener, NodeInterface {
         t.schedule(new TimerTask() {
         	@Override
 			public void run() {
+        		System.out.println();
+        		System.out.println("ID: " + node.ID);
         		System.out.println("NextNode: " + node.getNextNode() );
+        		System.out.println("PreviousNode: " + node.previousID);
+        		System.out.println("=============");
         	}
         }, 0, 5000);
         
+//        t.schedule(new TimerTask() {
+//        	public void run() {
+//        		try {
+//        			textMsg.clearProperties();
+//        			textMsg.setObjectProperty("ID", node.getNextNode());
+//        			textMsg.setText("MESSAGE SENT BY NODE " + node.ID);
+//        			sender.send(textMsg);
+//        		}
+//        		catch(Exception e) {
+//        			System.exit(1);
+//        		}
+//        	}
+//        }, 0, 3000);
+        
         node.receive(queueName);
     }
+	
+	protected Object getId() {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
 }
