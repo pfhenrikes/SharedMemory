@@ -1,9 +1,13 @@
 package jms;
 
 import java.util.Hashtable;
+
+import javax.jms.Connection;
 import javax.jms.JMSException;
 import javax.jms.Message;
+import javax.jms.MessageConsumer;
 import javax.jms.MessageListener;
+import javax.jms.MessageProducer;
 import javax.jms.Queue;
 import javax.jms.QueueConnection;
 import javax.jms.QueueConnectionFactory;
@@ -14,23 +18,21 @@ import javax.jms.TextMessage;
 import javax.naming.Context;
 import javax.naming.InitialContext;
 import javax.naming.NamingException;
+
+import com.sun.messaging.ConnectionConfiguration;
+import com.sun.messaging.ConnectionFactory;
  
 public class CleanQueue implements MessageListener {
-
-    // connection factory
-    private QueueConnectionFactory qconFactory;
-    
-    // connection to a queue
-    private QueueConnection qcon;
-    
-    // session within a connection
-    private QueueSession qsession;
-    
-    // queue receiver that receives a message to the queue
-    private QueueReceiver qreceiver;
-    
-    // queue where the message will be sent to
-    private Queue queue;
+	
+	private String ID;
+	private String queueName = "dsv";
+	
+	private ConnectionFactory myConnFactory;
+    private Connection myConn;
+    private com.sun.messaging.Queue myQueue;
+    private MessageConsumer receiver;
+    private MessageProducer sender;
+    private Session mySess; 
     
     // callback when the message exist in the queue
     public void onMessage(Message msg) {
@@ -47,39 +49,45 @@ public class CleanQueue implements MessageListener {
         }
     }
     
+    public CleanQueue(String id) {
+    	this.ID = id;
+    	try {
+			init();
+		} catch (NamingException | JMSException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+    }
+    
+    
     // create a connection to the WLS using a JNDI context
-    public void init(Context ctx, String queueName)
+    public void init()
             throws NamingException, JMSException {
 
-        qconFactory = (QueueConnectionFactory) ctx.lookup(Config.JMS_FACTORY);
-        qcon = qconFactory.createQueueConnection();
-        qsession = qcon.createQueueSession(false, Session.AUTO_ACKNOWLEDGE);
-        queue = (Queue) ctx.lookup(queueName);
-
-        qreceiver = qsession.createReceiver(queue);
-        qreceiver.setMessageListener(this); 
+    	myConnFactory = new ConnectionFactory();
+        myConnFactory.setProperty(ConnectionConfiguration.imqAddressList, "192.168.56.3:7676");
+        myConn = myConnFactory.createConnection();
+        mySess = myConn.createSession(false, Session.AUTO_ACKNOWLEDGE);
+        myQueue = new com.sun.messaging.Queue(queueName);
         
-        qcon.start();
+        receiver = mySess.createConsumer(myQueue, "ID='" + this.ID + "'");
+        receiver.setMessageListener(this);
+               
+        myConn.start();
     }
     
     // close sender, connection and the session
     public void close() throws JMSException {
-        qreceiver.close();
-        qsession.close();
-        qcon.close();
+        receiver.close();
+        mySess.close();
+        myConn.close();
     }
     
     // start receiving messages from the queue
-    public void receive(String queueName) throws Exception {
-        Hashtable<String, String> env = new Hashtable<String, String>();
-        env.put(Context.INITIAL_CONTEXT_FACTORY, Config.JNDI_FACTORY);
-        env.put(Context.PROVIDER_URL, Config.PROVIDER_URL);
-
-        InitialContext ic = new InitialContext(env);
-
-        init(ic, queueName);
+    public void receive() throws Exception {
         
-        System.out.println("Connected to " + queue.toString() + ", receiving messages...");
+        
+        //System.out.println("Connected to " + queue.toString() + ", receiving messages...");
         try {
             synchronized (this) {
                 while (true) {
@@ -93,11 +101,8 @@ public class CleanQueue implements MessageListener {
     }
     
     public static void main(String[] args) throws Exception {
-        // input arguments
-        String queueName = "jms/dsv-election" ;
-        
-        // create the producer object and receive the message
-        CleanQueue consumer = new CleanQueue();
-        consumer.receive(queueName);
+    	CleanQueue cleaner = new CleanQueue(args[0]);
+    	cleaner.receive();
+    	
     }
 }

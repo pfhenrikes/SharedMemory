@@ -9,6 +9,7 @@ import javax.jms.Message;
 import javax.jms.MessageConsumer;
 import javax.jms.MessageListener;
 import javax.jms.MessageProducer;
+import javax.jms.ObjectMessage;
 import javax.jms.Session;
 import javax.jms.TextMessage;
 import javax.naming.NamingException;
@@ -22,12 +23,19 @@ public class Node implements NodeInterface, MessageListener {
 	
 	// a message that will be sent to the queue
     private TextMessage textMsg;
+    private ObjectMessage objectMsg;
     
-    private String ID;
     
-    private String nextNode;
+    private int ID;
     
-    private String previousID;
+    private int nextNode;
+    
+    private int previousID;
+    
+    
+    // Election and Leader
+    private Boolean isParticipant = false;
+    private int leaderId;
     
     
     private ConnectionFactory myConnFactory;
@@ -37,10 +45,11 @@ public class Node implements NodeInterface, MessageListener {
     private MessageProducer sender;
     private Session mySess;
 	
-	public Node(String id, String previousId) {
+	public Node(int id, int previousId, int leaderId) {
 		this.ID = id;
 		this.nextNode = id;
 		this.previousID = previousId;
+		this.leaderId = leaderId;
 		
 		try {
 			init();
@@ -63,52 +72,149 @@ public class Node implements NodeInterface, MessageListener {
                 if( msg.propertyExists("LOGIN") && msg.getBooleanProperty("LOGIN")) {
                 	System.out.println("LOGIN INFO RECEIVED: " + msgText);
                 	
-                	String nextNodeOld = this.nextNode;
+                	int nextNodeOld = this.nextNode;
                 	
-                	this.nextNode = msgText;
+                	this.nextNode = Integer.parseInt(msgText);
+                	
+                	LoginDataResponse data = new LoginDataResponse(nextNodeOld, this.leaderId);
                 	
                 	// Update NEXTNODE info in the new node
-                	textMsg.clearProperties();
-                	textMsg.setObjectProperty("ID", this.nextNode);
-                	textMsg.setBooleanProperty("NEXTNODE", true);
-                	this.textMsg.setText(nextNodeOld);
-                	sender.send(this.textMsg);
+                	objectMsg.clearProperties();
+                	objectMsg.setObjectProperty("ID", Integer.toString(this.nextNode));
+                	objectMsg.setBooleanProperty("NEXTNODE", true);
+                	objectMsg.setObject(data);
+                	sender.send(objectMsg);
+                	
+                	
+                	// ALTERAR ALTERAR !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                	// CIRCULO UNIDIRECIONAL
                 	
                 	// Updating PREVIOUSNODE info in the previous NEXTNODE
                 	if(this.ID == nextNodeOld) this.previousID = this.nextNode;
                 	else {
 	                	textMsg.clearProperties();
-	                	textMsg.setObjectProperty("ID", nextNodeOld);
+	                	textMsg.setObjectProperty("ID", Integer.toString(nextNodeOld));
 	                	textMsg.setBooleanProperty("PREVIOUSNODE", true);
-	                	textMsg.setText(this.nextNode);
+	                	textMsg.setText(Integer.toString(this.nextNode));
 	                	sender.send(textMsg);
                 	}
                 	
                 }
                 else if(msg.propertyExists("NEXTNODE") && msg.getBooleanProperty("NEXTNODE")) {
-                	this.nextNode = msgText;
+                	this.nextNode = Integer.parseInt(msgText);
                 	System.out.println("NEXTNODE NEXTNODE UPDATED: " + this.nextNode);
                 }
                 else if(msg.propertyExists("PREVIOUSNODE") && msg.getBooleanProperty("PREVIOUSNODE")) {
-                	this.previousID = msgText;
+                	this.previousID = Integer.parseInt(msgText);
                 }
                 
+                else if(msg.propertyExists("LOGOUT") && msg.getBooleanProperty("LOGOUT")) {
+                	this.previousID = Integer.parseInt(msgText);
+                	if(Integer.parseInt(msg.getStringProperty("ORIGINID")) == this.leaderId) {
+                		this.leaderId = -1;
+                		if(this.ID != this.nextNode) {
+                			sendElection(this.ID);
+                			System.out.println("ELECTION IS IN PROGRESS");
+                		}
+                		else {
+                			this.leaderId = this.ID;
+                			System.out.println("ELECTION NOT NEEDED");
+                		}
+                	}
+                }
+                
+                // Election process
+                else if(msg.propertyExists("ELECTION") && msg.getBooleanProperty("ELECTION")) {
+                	System.out.println("ELECTION MESSAGE RECEIVED");
+                	int idMsg = Integer.parseInt(msgText);
+                	System.out.println("PROPOSED LEADER: " + idMsg);
+                	if(idMsg > this.ID) {
+                		System.out.println("SENDING MESSAGE WITHOUT CHANGING ID");
+                		sendElection(idMsg);
+                		this.isParticipant = true;
+                	}
+                	else if(idMsg < this.ID && !this.isParticipant) {
+                		System.out.println("SENDING MY ID AS LEADER");
+                		sendElection(this.ID);
+                		this.isParticipant = true;
+                	}
+                	else if(idMsg < this.ID && this.isParticipant) {
+                		System.out.println("ELECTION MESSAGE DISCARDED!");
+                	}
+                	else {
+                		System.out.println("IM THE LEADER");
+                		this.leaderId = this.ID;
+                		sendElectionFinished();
+                		System.out.println("ENDING ELECTION");
+                	}
+                }
+                
+                else if(msg.propertyExists("LEADER") && msg.getBooleanProperty("LEADER")) {
+                	System.out.println("LEADER MESSAGE RECEIVED");
+                	int leader = Integer.parseInt(msgText);
+                	if(this.leaderId == leader) System.out.println("ELECTION IS OVER");
+                	else {
+	                	this.leaderId = Integer.parseInt(msgText);
+	                	sendElectionFinished();
+                	}
+                }
+                
+                
             }
+            
+            else if(msg instanceof ObjectMessage) {
+            	LoginDataResponse data = (LoginDataResponse) ((ObjectMessage) msg).getObject();
+            	
+            	this.nextNode = data.getNextNode();
+            	this.leaderId = data.getLeaderId();
+            	
+            }
+            
+            
 		} catch(Exception e) {
 			e.printStackTrace();
 			System.exit(1);
 		}
                 	
 	}
+	
+	public void sendElectionFinished() {
+		try {
+			this.isParticipant = false;
+			textMsg.clearProperties();
+			textMsg.setObjectProperty("ID", Integer.toString(this.nextNode));
+			textMsg.setBooleanProperty("LEADER", true);
+			textMsg.setText(Integer.toString(this.leaderId));
+			sender.send(textMsg);
+		} catch(JMSException e) {
+			e.printStackTrace();
+			System.exit(1);
+		}
+	}
+	
+	public void sendElection(int idLeader) {
+		try {
+			this.isParticipant = true;
+			textMsg.clearProperties();
+			textMsg.setObjectProperty("ID", Integer.toString(this.nextNode));
+			textMsg.setBooleanProperty("ELECTION", true);
+			textMsg.setText(Integer.toString(idLeader));
+			sender.send(textMsg);
+		} catch(JMSException e) {
+			e.printStackTrace();
+			System.exit(1);
+		}
+	}
+	
 
 	@Override
-	public void login(String id) {
-		System.out.println("SENDING LOGIN INFO TO NODE " + id);
+	public void login(int arg1) {
+		System.out.println("SENDING LOGIN INFO TO NODE " + arg1);
 		try {
 			textMsg.clearProperties();
-			textMsg.setObjectProperty("ID", id);
+			textMsg.setObjectProperty("ID", Integer.toString(arg1));
 			textMsg.setBooleanProperty("LOGIN", true);
-			textMsg.setText(this.ID);
+			textMsg.setText(Integer.toString(this.ID));
 			sender.send(textMsg);
 			System.out.println("Login Message sent!");
 		} catch (JMSException e) {
@@ -123,14 +229,17 @@ public class Node implements NodeInterface, MessageListener {
 			try {
 				System.out.println("SENDING LOGOUT TO " + this.previousID + " (previousID) AND " + this.nextNode + " (nextNode)");
 				textMsg.clearProperties();
-				textMsg.setObjectProperty("ID", this.previousID);
+				textMsg.setObjectProperty("ID", Integer.toString(this.previousID));
 				textMsg.setBooleanProperty("NEXTNODE", true);
-				textMsg.setText(this.nextNode);
+				textMsg.setText(Integer.toString(this.nextNode));
 				sender.send(textMsg);
+				
+				
 				textMsg.clearProperties();
-				textMsg.setObjectProperty("ID", this.nextNode);
-				textMsg.setBooleanProperty("PREVIOUSNODE", true);
-				textMsg.setText(this.previousID);
+				textMsg.setObjectProperty("ID", Integer.toString(this.nextNode));
+				textMsg.setBooleanProperty("LOGOUT", true);
+				textMsg.setStringProperty("ORIGINID", Integer.toString(this.ID));
+				textMsg.setText(Integer.toString(this.nextNode));
 				sender.send(textMsg);
 			}
 			catch(Exception e) {
@@ -157,6 +266,7 @@ public class Node implements NodeInterface, MessageListener {
         
         sender = mySess.createProducer(myQueue);
         textMsg = mySess.createTextMessage();
+        objectMsg = mySess.createObjectMessage();
         
         myConn.start();
                 
@@ -191,11 +301,15 @@ public class Node implements NodeInterface, MessageListener {
 		Node node;
 		
 		if(args.length > 1) {
-        	node = new Node(args[0], args[1]);
-        	node.login(args[1]);
+        	int arg0 = Integer.parseInt(args[0]);
+        	int arg1 = Integer.parseInt(args[1]);
+			
+			node = new Node(arg0, arg1, -1);
+        	node.login(arg1);
         }
         else {
-        	node = new Node(args[0], args[0]);
+        	int arg0 = Integer.parseInt(args[0]);
+        	node = new Node(arg0, arg0, arg0);
         }
 		
 		// Logout when the process ends
@@ -216,10 +330,11 @@ public class Node implements NodeInterface, MessageListener {
         		System.out.println("ID: " + node.ID);
         		System.out.println("NextNode: " + node.nextNode );
         		System.out.println("PreviousNode: " + node.previousID);
+        		System.out.println("LeaderId: " + node.leaderId);
         		System.out.println("=============");
         	}
         }, 0, 5000);
-		
+		       
 		node.receive();
         
 	}
