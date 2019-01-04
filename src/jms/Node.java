@@ -60,7 +60,7 @@ public class Node implements NodeInterface, MessageListener {
                 msgText = ((TextMessage) msg).getText();
                 
                 // update nextNode
-                if( msg.propertyExists("LOGIN") && ((String) msg.getObjectProperty("LOGIN")).equals("true") ) {
+                if( msg.propertyExists("LOGIN") && msg.getBooleanProperty("LOGIN")) {
                 	System.out.println("LOGIN INFO RECEIVED: " + msgText);
                 	
                 	String nextNodeOld = this.nextNode;
@@ -70,7 +70,7 @@ public class Node implements NodeInterface, MessageListener {
                 	// Update NEXTNODE info in the new node
                 	textMsg.clearProperties();
                 	textMsg.setObjectProperty("ID", this.nextNode);
-                	textMsg.setObjectProperty("NEXTNODE", "true");
+                	textMsg.setBooleanProperty("NEXTNODE", true);
                 	this.textMsg.setText(nextNodeOld);
                 	sender.send(this.textMsg);
                 	
@@ -79,17 +79,17 @@ public class Node implements NodeInterface, MessageListener {
                 	else {
 	                	textMsg.clearProperties();
 	                	textMsg.setObjectProperty("ID", nextNodeOld);
-	                	textMsg.setObjectProperty("PREVIOUSNODE", "true");
+	                	textMsg.setBooleanProperty("PREVIOUSNODE", true);
 	                	textMsg.setText(this.nextNode);
 	                	sender.send(textMsg);
                 	}
                 	
                 }
-                else if(msg.propertyExists("NEXTNODE") && ((String) msg.getObjectProperty("NEXTNODE")).equals("true") ) {
+                else if(msg.propertyExists("NEXTNODE") && msg.getBooleanProperty("NEXTNODE")) {
                 	this.nextNode = msgText;
                 	System.out.println("NEXTNODE NEXTNODE UPDATED: " + this.nextNode);
                 }
-                else if(msg.propertyExists("PREVIOUSNODE") && ((String) msg.getObjectProperty("PREVIOUSNODE")).equals("true")) {
+                else if(msg.propertyExists("PREVIOUSNODE") && msg.getBooleanProperty("PREVIOUSNODE")) {
                 	this.previousID = msgText;
                 }
                 
@@ -107,7 +107,7 @@ public class Node implements NodeInterface, MessageListener {
 		try {
 			textMsg.clearProperties();
 			textMsg.setObjectProperty("ID", id);
-			textMsg.setObjectProperty("LOGIN", "true");
+			textMsg.setBooleanProperty("LOGIN", true);
 			textMsg.setText(this.ID);
 			sender.send(textMsg);
 			System.out.println("Login Message sent!");
@@ -124,12 +124,12 @@ public class Node implements NodeInterface, MessageListener {
 				System.out.println("SENDING LOGOUT TO " + this.previousID + " (previousID) AND " + this.nextNode + " (nextNode)");
 				textMsg.clearProperties();
 				textMsg.setObjectProperty("ID", this.previousID);
-				textMsg.setObjectProperty("NEXTNODE", "true");
+				textMsg.setBooleanProperty("NEXTNODE", true);
 				textMsg.setText(this.nextNode);
 				sender.send(textMsg);
 				textMsg.clearProperties();
 				textMsg.setObjectProperty("ID", this.nextNode);
-				textMsg.setObjectProperty("PREVIOUSNODE", "true");
+				textMsg.setBooleanProperty("PREVIOUSNODE", true);
 				textMsg.setText(this.previousID);
 				sender.send(textMsg);
 			}
