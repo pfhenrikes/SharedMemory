@@ -52,7 +52,16 @@ public class CleanQueue implements MessageListener {
     public CleanQueue(String id) {
     	this.ID = id;
     	try {
-			init();
+			init(true);
+		} catch (NamingException | JMSException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+    }
+    
+    public CleanQueue() {
+    	try {
+			init(false);
 		} catch (NamingException | JMSException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
@@ -61,7 +70,7 @@ public class CleanQueue implements MessageListener {
     
     
     // create a connection to the WLS using a JNDI context
-    public void init()
+    public void init(Boolean id)
             throws NamingException, JMSException {
 
     	myConnFactory = new ConnectionFactory();
@@ -70,7 +79,8 @@ public class CleanQueue implements MessageListener {
         mySess = myConn.createSession(false, Session.AUTO_ACKNOWLEDGE);
         myQueue = new com.sun.messaging.Queue(queueName);
         
-        receiver = mySess.createConsumer(myQueue, "ID='" + this.ID + "'");
+        if(id) receiver = mySess.createConsumer(myQueue, "ID='" + this.ID + "'");
+        else receiver = mySess.createConsumer(myQueue); 
         receiver.setMessageListener(this);
                
         myConn.start();
@@ -101,7 +111,11 @@ public class CleanQueue implements MessageListener {
     }
     
     public static void main(String[] args) throws Exception {
-    	CleanQueue cleaner = new CleanQueue(args[0]);
+    	CleanQueue cleaner;
+    	if(args.length > 0)
+    		cleaner = new CleanQueue(args[0]);
+    	else
+    		cleaner = new CleanQueue();
     	cleaner.receive();
     	
     }

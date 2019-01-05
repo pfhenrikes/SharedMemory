@@ -1,5 +1,6 @@
 package jms;
 
+import java.util.Random;
 import java.util.Timer;
 import java.util.TimerTask;
 
@@ -10,6 +11,7 @@ import javax.jms.MessageConsumer;
 import javax.jms.MessageListener;
 import javax.jms.MessageProducer;
 import javax.jms.ObjectMessage;
+import javax.jms.Queue;
 import javax.jms.Session;
 import javax.jms.TextMessage;
 import javax.naming.NamingException;
@@ -20,6 +22,7 @@ import com.sun.messaging.ConnectionFactory;
 public class Node implements NodeInterface, MessageListener {
 	
 	private String queueName = "dsv";
+	private String leaderQueueName = "dsvLeader";
 	
 	// a message that will be sent to the queue
     private TextMessage textMsg;
@@ -36,15 +39,19 @@ public class Node implements NodeInterface, MessageListener {
     // Election and Leader
     private Boolean isParticipant = false;
     private int leaderId;
-    
-    
+        
     private ConnectionFactory myConnFactory;
     private Connection myConn;
-    private com.sun.messaging.Queue myQueue;
+    private Queue myQueue;
+    private Queue myQueueLeader;
     private MessageConsumer receiver;
     private MessageProducer sender;
     private Session mySess;
+
 	
+    private MessageProducer senderLeader;
+    private MessageConsumer receiverLeader;
+    
 	public Node(int id, int previousId, int leaderId) {
 		this.ID = id;
 		this.nextNode = id;
@@ -200,12 +207,12 @@ public class Node implements NodeInterface, MessageListener {
 			textMsg.setBooleanProperty("ELECTION", true);
 			textMsg.setText(Integer.toString(idLeader));
 			sender.send(textMsg);
+			
 		} catch(JMSException e) {
 			e.printStackTrace();
 			System.exit(1);
 		}
 	}
-	
 
 	@Override
 	public void login(int arg1) {
@@ -260,11 +267,20 @@ public class Node implements NodeInterface, MessageListener {
         myConn = myConnFactory.createConnection();
         mySess = myConn.createSession(false, Session.AUTO_ACKNOWLEDGE);
         myQueue = new com.sun.messaging.Queue(queueName);
+        myQueueLeader = new com.sun.messaging.Queue(leaderQueueName);
         
         receiver = mySess.createConsumer(myQueue, "ID='" + this.ID + "'");
         receiver.setMessageListener(this);
         
         sender = mySess.createProducer(myQueue);
+        senderLeader = mySess.createProducer(myQueueLeader);
+        sender.setTimeToLive(5000);
+        senderLeader.setTimeToLive(5000);
+        
+        receiverLeader = mySess.createConsumer(myQueueLeader);
+        receiverLeader.setMessageListener(new LeaderListener());
+        
+        
         textMsg = mySess.createTextMessage();
         objectMsg = mySess.createObjectMessage();
         
@@ -296,7 +312,45 @@ public class Node implements NodeInterface, MessageListener {
         }
     }
     
-
+    public void askLeader() {
+    	MessageConsumer tempConsumer = null;
+    	Queue tempQueue = null;
+    	// request
+    	try {
+			tempQueue = mySess.createTemporaryQueue();
+			textMsg.clearProperties();
+			textMsg.setJMSReplyTo(tempQueue);
+			textMsg.setJMSCorrelationID(Long.toHexString(new Random(System.currentTimeMillis()).nextLong()));
+			textMsg.setText("THIS IS A TEST");
+			
+			senderLeader.send(textMsg);
+			
+			tempConsumer = mySess.createConsumer(tempQueue);		
+			
+		} catch (JMSException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+    	
+    	// reply to request
+    	try {
+			Message msg = tempConsumer.receive(2000); //timeout of two seconds
+			if(msg != null) {
+				System.out.println("RECEIVED FROM LEADER: "+((TextMessage)msg).getText());
+				tempConsumer.close();
+			}
+			else throw new JMSException("Error");
+		} catch (JMSException e) {
+			e.printStackTrace();
+			System.out.println("LEADER IS NOT RESPONDING, INITIALIZATING ELECTION");
+			sendElection(this.ID);
+		} 
+    	
+    	
+    }
+    
+    
+    // #################################################################################################
 	public static void main(String[] args) throws Exception {
 		Node node;
 		
@@ -334,11 +388,19 @@ public class Node implements NodeInterface, MessageListener {
         		System.out.println("=============");
         	}
         }, 0, 5000);
+        
+        t.schedule(new TimerTask() {
+			
+			@Override
+			public void run() {
+				System.out.println("Asking Leader");
+				node.askLeader();
+			}
+		}, 7000, 10000);
 		       
 		node.receive();
         
 	}
-	
-	
+
 
 }
