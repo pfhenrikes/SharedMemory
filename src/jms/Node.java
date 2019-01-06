@@ -5,6 +5,7 @@ import java.util.Timer;
 import java.util.TimerTask;
 
 import javax.jms.Connection;
+import javax.jms.Destination;
 import javax.jms.JMSException;
 import javax.jms.Message;
 import javax.jms.MessageConsumer;
@@ -51,6 +52,11 @@ public class Node implements NodeInterface, MessageListener {
 	
     private MessageProducer senderLeader;
     private MessageConsumer receiverLeader;
+    
+    
+    // ################
+    private SharedVariable sharedVariable = new SharedVariable(0,0);
+    
     
 	public Node(int id, int previousId, int leaderId) {
 		this.ID = id;
@@ -166,14 +172,50 @@ public class Node implements NodeInterface, MessageListener {
                 	}
                 }
                 
+                else if(msg.propertyExists("REQUEST") && msg.getBooleanProperty("REQUEST")) {
+                	msgText = ((TextMessage) msg).getText();
+    				System.out.println("RECEIVED: " + msgText);
+    				
+    				Destination replyQueue = msg.getJMSReplyTo();
+    				
+    				MessageProducer tempProducer = mySess.createProducer(replyQueue);
+    				
+    				objectMsg.clearProperties();
+    				objectMsg.setJMSDestination(replyQueue);
+    				objectMsg.setJMSCorrelationID(msg.getJMSCorrelationID());
+    				objectMsg.setObject(sharedVariable);
+    				
+    				//Thread.sleep(3000);
+    				
+    				tempProducer.send(objectMsg);
+    				
+    				tempProducer.close();
+                }
+                
+                
                 
             }
             
             else if(msg instanceof ObjectMessage) {
-            	LoginDataResponse data = (LoginDataResponse) ((ObjectMessage) msg).getObject();
             	
-            	this.nextNode = data.getNextNode();
-            	this.leaderId = data.getLeaderId();
+            	if(msg.propertyExists("NEXTNODE") && msg.getBooleanProperty("NEXTNODE")) {
+	            	
+	            	LoginDataResponse data = (LoginDataResponse) ((ObjectMessage) msg).getObject();
+	            	
+	            	this.nextNode = data.getNextNode();
+	            	this.leaderId = data.getLeaderId();
+            	}
+            	
+            	else if(msg.propertyExists("WRITE") && msg.getBooleanProperty("WRITE")) {
+            		SharedVariable variable = (SharedVariable) ((ObjectMessage) msg).getObject();
+            		
+            		System.out.println("WRITE REQUEST - NUMBER: " + variable.getNumber() + " ID: "+variable.getId());
+            		
+            		if(sharedVariable.getId() < variable.getId()) {
+            			updateSharedVariable(variable.getNumber(), variable.getId());
+            		}
+            		
+            	}
             	
             }
             
@@ -193,6 +235,11 @@ public class Node implements NodeInterface, MessageListener {
 			textMsg.setBooleanProperty("LEADER", true);
 			textMsg.setText(Integer.toString(this.leaderId));
 			sender.send(textMsg);
+			
+			//starts listening to the leaderQueue
+			receiverLeader = mySess.createConsumer(myQueueLeader);
+			receiverLeader.setMessageListener(this);
+			
 		} catch(JMSException e) {
 			e.printStackTrace();
 			System.exit(1);
@@ -248,6 +295,8 @@ public class Node implements NodeInterface, MessageListener {
 				textMsg.setStringProperty("ORIGINID", Integer.toString(this.ID));
 				textMsg.setText(Integer.toString(this.nextNode));
 				sender.send(textMsg);
+				
+				close();
 			}
 			catch(Exception e) {
 				e.printStackTrace();
@@ -277,9 +326,10 @@ public class Node implements NodeInterface, MessageListener {
         sender.setTimeToLive(5000);
         senderLeader.setTimeToLive(5000);
         
-        receiverLeader = mySess.createConsumer(myQueueLeader);
-        receiverLeader.setMessageListener(new LeaderListener());
-        
+        if(this.leaderId == this.ID) {
+        	receiverLeader = mySess.createConsumer(myQueueLeader);
+        	receiverLeader.setMessageListener(this);
+    	}
         
         textMsg = mySess.createTextMessage();
         objectMsg = mySess.createObjectMessage();
@@ -294,6 +344,7 @@ public class Node implements NodeInterface, MessageListener {
         sender.close();
         mySess.close();
         myConn.close();
+        if(receiverLeader != null) receiverLeader.close();
     }
 	
     // start receiving messages from the queue
@@ -311,42 +362,38 @@ public class Node implements NodeInterface, MessageListener {
             System.out.println("Finished.");
         }
     }
+        
+    private void updateSharedVariable(int number, int id) {
+    	this.sharedVariable.setNumber(number);
+    	this.sharedVariable.setId(id);
+    }
     
-    public void askLeader() {
-    	MessageConsumer tempConsumer = null;
-    	Queue tempQueue = null;
-    	// request
-    	try {
-			tempQueue = mySess.createTemporaryQueue();
-			textMsg.clearProperties();
-			textMsg.setJMSReplyTo(tempQueue);
-			textMsg.setJMSCorrelationID(Long.toHexString(new Random(System.currentTimeMillis()).nextLong()));
-			textMsg.setText("THIS IS A TEST");
-			
-			senderLeader.send(textMsg);
-			
-			tempConsumer = mySess.createConsumer(tempQueue);		
-			
-		} catch (JMSException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
-    	
-    	// reply to request
-    	try {
-			Message msg = tempConsumer.receive(2000); //timeout of two seconds
-			if(msg != null) {
-				System.out.println("RECEIVED FROM LEADER: "+((TextMessage)msg).getText());
-				tempConsumer.close();
+    private void work() {
+    	while(true) {
+    		Random random = new Random();
+    		
+    		try {
+				Thread.sleep((long) (random.nextDouble()*10000));
+				
+				// Compare local variable to the leader's one
+				SharedVariable variable = read();
+				
+				if(variable.getId() > sharedVariable.getId() ) {
+					updateSharedVariable(variable.getNumber(), variable.getId());
+				}
+				
+				if(random.nextBoolean()) {
+					System.out.println("CHANGING VALUE");
+					write(variable.getNumber() + 2);
+				}
+				
+				
+			} catch (InterruptedException | JMSException e) {
+				e.printStackTrace();
+				System.exit(1);
 			}
-			else throw new JMSException("Error");
-		} catch (JMSException e) {
-			e.printStackTrace();
-			System.out.println("LEADER IS NOT RESPONDING, INITIALIZATING ELECTION");
-			sendElection(this.ID);
-		} 
-    	
-    	
+    		
+    	}
     }
     
     
@@ -355,6 +402,7 @@ public class Node implements NodeInterface, MessageListener {
 		Node node;
 		
 		if(args.length > 1) {
+			// second or more nodes, they login to the previous node specified
         	int arg0 = Integer.parseInt(args[0]);
         	int arg1 = Integer.parseInt(args[1]);
 			
@@ -362,6 +410,7 @@ public class Node implements NodeInterface, MessageListener {
         	node.login(arg1);
         }
         else {
+        	// first node and is leader automatically
         	int arg0 = Integer.parseInt(args[0]);
         	node = new Node(arg0, arg0, arg0);
         }
@@ -388,18 +437,64 @@ public class Node implements NodeInterface, MessageListener {
         		System.out.println("=============");
         	}
         }, 0, 5000);
+        		       
+		//node.receive();
+		
+		node.work();
         
-        t.schedule(new TimerTask() {
+	}
+
+
+	@Override
+	public SharedVariable read() {
+		MessageConsumer tempConsumer = null;
+    	Queue tempQueue = null;
+    	SharedVariable sv = null;
+    	// request
+    	try {
+			tempQueue = mySess.createTemporaryQueue();
+			textMsg.clearProperties();
+			textMsg.setBooleanProperty("REQUEST", true);
+			textMsg.setJMSReplyTo(tempQueue);
+			textMsg.setJMSCorrelationID(Long.toHexString(new Random(System.currentTimeMillis()).nextLong()));
+			textMsg.setText("THIS IS A TEST");
 			
-			@Override
-			public void run() {
-				System.out.println("Asking Leader");
-				node.askLeader();
+			senderLeader.send(textMsg);
+			
+			tempConsumer = mySess.createConsumer(tempQueue);		
+			
+		} catch (JMSException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+    	
+    	// reply to request
+    	try {
+			Message msg = tempConsumer.receive(2000); //timeout of two seconds
+			sv = (SharedVariable)((ObjectMessage)msg).getObject();
+			if(msg != null) {
+				System.out.println("RECEIVED FROM LEADER - NUMBER: " + sv.getNumber() + " ID: " + sv.getId());
+				tempConsumer.close();
 			}
-		}, 7000, 10000);
-		       
-		node.receive();
-        
+			else throw new JMSException("Error");
+			
+		} catch (JMSException e) {
+			e.printStackTrace();
+			System.out.println("LEADER IS NOT RESPONDING, INITIALIZATING ELECTION");
+			sendElection(this.ID);
+		} 
+    	
+    	return sv;
+	}
+
+
+	@Override
+	public void write(int value) throws JMSException {
+		updateSharedVariable(value, sharedVariable.getId() + 1 );
+		objectMsg.clearProperties();
+		objectMsg.setBooleanProperty("WRITE", true);
+		objectMsg.setObject(sharedVariable);
+		senderLeader.send(objectMsg);
 	}
 
 

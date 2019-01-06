@@ -7,6 +7,7 @@ import javax.jms.Message;
 import javax.jms.MessageConsumer;
 import javax.jms.MessageListener;
 import javax.jms.MessageProducer;
+import javax.jms.ObjectMessage;
 import javax.jms.Queue;
 import javax.jms.Session;
 import javax.jms.TextMessage;
@@ -20,6 +21,7 @@ public class LeaderListener implements MessageListener {
     private Connection myConn;
     private Session mySess;
     private TextMessage textMsg;
+    private ObjectMessage objectMsg;
 	
 	@Override
 	public void onMessage(Message msg) {
@@ -34,10 +36,10 @@ public class LeaderListener implements MessageListener {
 				
 				MessageProducer tempProducer = mySess.createProducer(replyQueue);
 				
-				textMsg.clearProperties();
-				textMsg.setJMSDestination(replyQueue);
-				textMsg.setJMSCorrelationID(msg.getJMSCorrelationID());
-				textMsg.setText("ACCEPTED");
+				objectMsg.clearProperties();
+				objectMsg.setJMSDestination(replyQueue);
+				objectMsg.setJMSCorrelationID(msg.getJMSCorrelationID());
+//				objectMsg.setObject();
 				
 				Thread.sleep(3000);
 				
@@ -54,6 +56,8 @@ public class LeaderListener implements MessageListener {
 
 	}
 	
+	
+	
 	public LeaderListener() {
 		init();
 	}
@@ -65,6 +69,7 @@ public class LeaderListener implements MessageListener {
             myConn = myConnFactory.createConnection();
 			mySess = myConn.createSession(false, Session.AUTO_ACKNOWLEDGE);
 			textMsg = mySess.createTextMessage();
+			objectMsg = mySess.createObjectMessage();
 		} catch (JMSException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
