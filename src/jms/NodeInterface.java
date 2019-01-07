@@ -10,8 +10,8 @@ public interface NodeInterface {
 		
 	public void logout();
 	
-	public SharedVariable read();
-	
-	public void write(int value) throws JMSException;
+	public SharedVariable read(int address);
+
+	void write(int value, int address) throws JMSException;
 	
 }
