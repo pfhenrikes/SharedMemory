@@ -24,6 +24,7 @@ import com.sun.messaging.ConnectionFactory;
 
 public class Node implements NodeInterface, MessageListener {
 	
+	private String IPAdress = "localhost";
 	private String queueName = "dsv";
 	private String leaderQueueName = "dsvLeader";
 	
@@ -176,9 +177,15 @@ public class Node implements NodeInterface, MessageListener {
                 }
                 
                 else if(msg.propertyExists("LEADER") && msg.getBooleanProperty("LEADER")) {
-                	System.out.println("LEADER MESSAGE RECEIVED");
                 	int leader = Integer.parseInt(msgText);
-                	if(this.leaderId == leader) System.out.println("ELECTION IS OVER");
+                	System.out.println("RECEIVED NEW LEADER: " + leader);                	
+                	if(this.leaderId == leader) {
+                		System.out.println("ELECTION IS OVER");
+            			
+                		//starts listening to the leaderQueue
+            			receiverLeader = mySess.createConsumer(myQueueLeader);
+            			receiverLeader.setMessageListener(this);
+                	}
                 	else {
 	                	this.leaderId = Integer.parseInt(msgText);
 	                	sendElectionFinished();
@@ -340,10 +347,6 @@ public class Node implements NodeInterface, MessageListener {
 				sender.send(textMsg);
 			}
 			
-			//starts listening to the leaderQueue
-			receiverLeader = mySess.createConsumer(myQueueLeader);
-			receiverLeader.setMessageListener(this);
-			
 		} catch(JMSException e) {
 			e.printStackTrace();
 			System.exit(1);
@@ -422,7 +425,7 @@ public class Node implements NodeInterface, MessageListener {
             throws NamingException, JMSException {        
        
         myConnFactory = new ConnectionFactory();
-        myConnFactory.setProperty(ConnectionConfiguration.imqAddressList, "192.168.56.3:7676");
+        myConnFactory.setProperty(ConnectionConfiguration.imqAddressList, this.IPAdress);
         myConn = myConnFactory.createConnection();
         mySess = myConn.createSession(false, Session.AUTO_ACKNOWLEDGE);
         myQueue = new com.sun.messaging.Queue(queueName);
@@ -621,15 +624,17 @@ public class Node implements NodeInterface, MessageListener {
     		Random random = new Random();
     		
     		try {
-				Thread.sleep((long) (random.nextDouble()*10000));
-				
-				
-				requestPermission();
+				//Thread.sleep((long) (random.nextDouble()*10000));
 				
 				System.out.println("THREAD WAITING FOR CONFIRMATION");
+				requestPermission();
 				
-				continueSignal.await();
 				
+				
+				if(continueSignal.getCount() > 0) {	
+					System.out.println("TEST");
+					continueSignal.await();
+				}
 				System.out.println("THREAD CONTINUING");
 				
 				// Compare local variable to the leader's one
@@ -651,6 +656,7 @@ public class Node implements NodeInterface, MessageListener {
 				continueSignal = new CountDownLatch(1);
 				
 				i++;
+				
 			} catch (InterruptedException | JMSException e) {
 				e.printStackTrace();
 				System.exit(1);
