@@ -58,7 +58,7 @@ public class Node implements NodeInterface, MessageListener {
     private MessageConsumer receiverLeader;
     
     
-    private java.util.Queue<Integer> criticalAccessFIFO = new LinkedList<Integer>();
+    private Map<Integer, java.util.Queue<Integer>> criticalAccessFIFO = new TreeMap<>();
     private Map<Integer, Boolean> criticalAccessInUse = new TreeMap<>();
     
     
@@ -78,6 +78,8 @@ public class Node implements NodeInterface, MessageListener {
     private final int addr4 = 439041092;
     
     
+    
+    
 	public Node(int id, int previousId, int leaderId) {
 		this.ID = id;
 		this.nextNode = id;
@@ -95,6 +97,11 @@ public class Node implements NodeInterface, MessageListener {
 		criticalAccessInUse.put(addr2, false);
 		criticalAccessInUse.put(addr3, false);
 		criticalAccessInUse.put(addr4, false);
+		
+		criticalAccessFIFO.put(addr1, new LinkedList<Integer>());
+		criticalAccessFIFO.put(addr2, new LinkedList<Integer>());
+		criticalAccessFIFO.put(addr3, new LinkedList<Integer>());
+		criticalAccessFIFO.put(addr4, new LinkedList<Integer>());
 		
 	}
 	
@@ -234,23 +241,29 @@ public class Node implements NodeInterface, MessageListener {
                 
                 else if(msg.propertyExists("PERMISSION") && msg.getBooleanProperty("PERMISSION")) {
                 	int addr = Integer.parseInt(msgText);
+                	int id = 0;
+                	if (msg.propertyExists("ID"))
+                		id = msg.getIntProperty("ID");
                 	if(criticalAccessInUse.get(addr)) {
-                		criticalAccessFIFO.add(Integer.parseInt(msgText));
+                		criticalAccessFIFO.get(addr).add(id);
                 	}
                 	else {
                 		criticalAccessInUse.put(addr, true);
-                		sendPermissionGranted(Integer.parseInt(msgText));
+                		sendPermissionGranted(id);
                 		
                 	}
                 }
                 
                 else if(msg.propertyExists("RELEASED") && msg.getBooleanProperty("RELEASED")) {
-                	if(!criticalAccessFIFO.isEmpty()) {
-                		int id = criticalAccessFIFO.remove();
+                	int addr = Integer.parseInt(msgText);                	
+                	System.out.println(addr + " LOCK RELEASED " + criticalAccessFIFO.get(addr).isEmpty());
+                	if(!criticalAccessFIFO.get(addr).isEmpty()) {
+                		int id = criticalAccessFIFO.get(addr).remove();
+                		System.out.println("NEXT LOCK ID " + id);
                 		sendPermissionGranted(id);
                 	}
                 	else {
-                		criticalAccessInUse = false;
+                		criticalAccessInUse.put(addr, false);
                 	}
                 }
                 
@@ -271,7 +284,7 @@ public class Node implements NodeInterface, MessageListener {
             	
             	else if(msg.propertyExists("WRITE") && msg.getBooleanProperty("WRITE")) {
             		
-            		int address;
+            		int address = 0;
             		if(msg.propertyExists("ADDRESS")) 
             			address = msg.getIntProperty("ADDRESS");
             		
@@ -293,10 +306,11 @@ public class Node implements NodeInterface, MessageListener {
             	else if(msg.propertyExists("UPDATEMEMORY") && msg.getBooleanProperty("UPDATEMEMORY")) {
             		if(this.ID != this.leaderId) {
             			System.out.println("UPDATING SHARED VARIABLE");
-            			int address;
+            			int address = 0;
             			if(msg.propertyExists("ADDRESS")) 
                 			address = msg.getIntProperty("ADDRESS");
             			SharedVariable variable = (SharedVariable) ((ObjectMessage)msg).getObject();
+
             			updateSharedMemory(address, variable.getNumber(), variable.getId());
             			propagateWrite(address);
             			System.out.println(address + " NUMBER: " + variable.getNumber() + " ID: " + variable.getId());
@@ -335,6 +349,7 @@ public class Node implements NodeInterface, MessageListener {
 				objectMsg.setStringProperty("ID", Integer.toString(id));
 				//objectMsg.setObject(sharedVariable);
 				sender.send(objectMsg);
+				System.out.println("PERMISSION GRANTED SENT");
 			}
 		} catch (JMSException e) {
 			// TODO Auto-generated catch block
@@ -351,6 +366,7 @@ public class Node implements NodeInterface, MessageListener {
 				objectMsg.clearProperties();
 				objectMsg.setBooleanProperty("UPDATEMEMORY", true);
 				objectMsg.setStringProperty("ID", Integer.toString(this.nextNode));
+				objectMsg.setIntProperty("ADDRESS", address);
 				objectMsg.setObject(sharedMemory.getVariable(address));
 				
 				sender.send(objectMsg);
@@ -506,6 +522,7 @@ public class Node implements NodeInterface, MessageListener {
     }
         
     private void updateSharedMemory(int address, int number, int id) {
+    	System.out.println("CRASH " + address);
     	SharedVariable local = sharedMemory.getVariable(address);
     	local.setNumber(number);
     	local.setId(id);
@@ -561,22 +578,24 @@ public class Node implements NodeInterface, MessageListener {
 
 	@Override
 	public void write(int value, int address) throws JMSException {
-		updateSharedVariable(value, sharedVariable.getId() + 1 );
+		SharedVariable local = sharedMemory.getVariable(address);
+		updateSharedMemory(address, value, local.getId() + 1);
 		synchronized(objectMsg) {
 			objectMsg.clearProperties();
 			objectMsg.setBooleanProperty("WRITE", true);
 			objectMsg.setIntProperty("ADDRESS", address);
-			objectMsg.setObject(sharedVariable);
+			objectMsg.setObject(sharedMemory.getVariable(address));
 			senderLeader.send(objectMsg);
 		}
 	}
 	
 	private void requestPermission(int address) {
+		System.out.println("REQUEST PERMISSION FOR " + address);
 		try {
 			synchronized(textMsg) {
 				textMsg.clearProperties();
 				textMsg.setBooleanProperty("PERMISSION", true);
-				textMsg.setText(Integer.toString(this.ID));
+				textMsg.setIntProperty("ID", this.ID);
 				textMsg.setJMSCorrelationID(Long.toHexString(new Random(System.currentTimeMillis()).nextLong()));
 				textMsg.setText(Integer.toString(address));
 				senderLeader.send(textMsg);
@@ -588,11 +607,12 @@ public class Node implements NodeInterface, MessageListener {
 		
 	}
 	
-	private void releaseLock() {
+	private void releaseLock(int address) {
 		try {
 			synchronized (textMsg) {
 				textMsg.clearProperties();
 				textMsg.setBooleanProperty("RELEASED", true);
+				textMsg.setText(Integer.toString(address));
 				senderLeader.send(textMsg);
 			}
 		} catch(JMSException e) {
@@ -660,31 +680,30 @@ public class Node implements NodeInterface, MessageListener {
 				//Thread.sleep((long) (random.nextDouble()*10000));
 				
 				System.out.println("THREAD WAITING FOR CONFIRMATION");
-				requestPermission();
 				
-				
-				
+				requestPermission(addr1);
+							
 				if(continueSignal.getCount() > 0) {	
-					System.out.println("TEST");
 					continueSignal.await();
 				}
 				System.out.println("THREAD CONTINUING");
 				
 				// Compare local variable to the leader's one
-				SharedVariable variable = read();
+				SharedVariable variable = read(addr1);
+				SharedVariable local = sharedMemory.getVariable(addr1);
 				
-				if(variable.getId() > sharedVariable.getId() ) {
-					updateSharedMemory(variable.getNumber(), variable.getId());
+				if(variable.getId() > local.getId() ) {
+					updateSharedMemory(addr1, variable.getNumber(), variable.getId());
 				}
 				
 //				if(random.nextBoolean()) {
 					System.out.println("CHANGING VALUE");
-					write(variable.getNumber() + 2);
+					write(variable.getNumber() + 2, addr1);
 //				}
 				
 				Thread.sleep(3000);	
 					
-				releaseLock();
+				releaseLock(addr1);
 				
 				continueSignal = new CountDownLatch(1);
 				

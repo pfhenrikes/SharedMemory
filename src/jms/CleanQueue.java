@@ -24,8 +24,8 @@ import com.sun.messaging.ConnectionFactory;
  
 public class CleanQueue implements MessageListener {
 	
-	private String ID;
-	private String queueName = "dsv";
+	private String ID = "0";
+	private String queueName;
 	
 	private ConnectionFactory myConnFactory;
     private Connection myConn;
@@ -49,10 +49,21 @@ public class CleanQueue implements MessageListener {
         }
     }
     
-    public CleanQueue(String id) {
+    public CleanQueue(String queueName, String id) {
+    	this.queueName = queueName;
     	this.ID = id;
     	try {
 			init(true);
+		} catch (NamingException | JMSException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+    }
+    
+    public CleanQueue(String queueName) {
+    	this.queueName = queueName;
+    	try {
+			init(false);
 		} catch (NamingException | JMSException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
@@ -112,10 +123,12 @@ public class CleanQueue implements MessageListener {
     
     public static void main(String[] args) throws Exception {
     	CleanQueue cleaner;
-    	if(args.length > 0)
+    	if(args.length == 2)
+    		cleaner = new CleanQueue(args[0], args[1]);
+    	else if(args.length == 1)
     		cleaner = new CleanQueue(args[0]);
     	else
-    		cleaner = new CleanQueue();
+    		return;
     	cleaner.receive();
     	
     }

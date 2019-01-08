@@ -17,7 +17,5 @@
 			<attribute name="maven.pomderived" value="true"/>
 		</attributes>
 	</classpathentry>
-	<classpathentry kind="lib" path="/home/users/h/henriped/SharedMemory/lib/imq.jar"/>
-	<classpathentry kind="lib" path="/home/users/h/henriped/SharedMemory/lib/jms.jar"/>
 	<classpathentry kind="output" path="target/classes"/>
 </classpath>
