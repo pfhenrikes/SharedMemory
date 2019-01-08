@@ -85,7 +85,7 @@ public class CleanQueue implements MessageListener {
             throws NamingException, JMSException {
 
     	myConnFactory = new ConnectionFactory();
-        myConnFactory.setProperty(ConnectionConfiguration.imqAddressList, "192.168.56.3:7676");
+        myConnFactory.setProperty(ConnectionConfiguration.imqAddressList, "localhost");
         myConn = myConnFactory.createConnection();
         mySess = myConn.createSession(false, Session.AUTO_ACKNOWLEDGE);
         myQueue = new com.sun.messaging.Queue(queueName);
