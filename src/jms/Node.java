@@ -86,11 +86,12 @@ public class Node implements NodeInterface, MessageListener {
     private Logger logger = Logger.getLogger("DSVLog");
     
     
-	public Node(int id, int previousId, int leaderId) {
-		this.ID = id;
-		this.nextNode = id;
-		this.previousID = previousId;
-		this.leaderId = leaderId;
+	public Node(String IP, String id, String previousId, String leaderId) {
+		this.IPAdress = IP;
+		this.ID = Integer.parseInt(id);
+		this.nextNode = Integer.parseInt(id);
+		this.previousID = Integer.parseInt(previousId);
+		this.leaderId = Integer.parseInt(leaderId);
 		
 		try {
 			init();
@@ -663,27 +664,17 @@ public class Node implements NodeInterface, MessageListener {
 	public static void main(String[] args) {
 		Node node;
 		
-		if(args.length > 1) {
+		if(args.length > 2) {
 			// second or more nodes, they login to the previous node specified
-        	int arg0 = Integer.parseInt(args[0]);
-        	int arg1 = Integer.parseInt(args[1]);
-			node = new Node(arg0, arg1, -1);
-        	node.login(arg1);
+			node = new Node(args[0], args[1], args[2], "-1");
+        	node.login(Integer.parseInt(args[2]));
         }
         else {
         	// first node and is leader automatically
-        	int arg0 = Integer.parseInt(args[0]);
-        	node = new Node(arg0, arg0, arg0);
+        	node = new Node(args[0], args[1], args[1], args[1]);
         }
 		
-		// Logout when the process ends
-		Runtime.getRuntime().addShutdownHook(new Thread() {
-        	public void run() {
-        		System.out.println("Initiating shutdown protocol!");
-        		node.logout();
-        		System.out.println("System exited!");
-        	}
-        });
+		
 		
 //		Timer t = new Timer();
 //        
@@ -702,29 +693,43 @@ public class Node implements NodeInterface, MessageListener {
 		//node.receive();
 		
 		Scanner scanner = new Scanner(System.in);
-		int option = scanner.nextInt();		
-		
-		switch(option) {
-		case 1:
-			node.getLogger().info("EXECUTING BATCH WORK 1");
-			node.batchWork1(1, addr1);
-			break;
-		case 2:
-			node.getLogger().info("EXECUTING BATCH WORK 2");
-			node.batchWork2(1);
-			break;
-		case 3:
-			node.getLogger().info("EXECUTING BATCH WORK 3");
-			node.batchWork3(1);
-			break;
-		default:
-			System.out.println("Invalid option!");
-		
+				
+		while(true) {
+			printMenu();
+			int option = scanner.nextInt();	
+			switch(option) {
+			case 1:
+				node.getLogger().info("EXECUTING BATCH WORK 1");
+				node.batchWork1(1, addr1);
+				break;
+			case 2:
+				node.getLogger().info("EXECUTING BATCH WORK 2");
+				node.batchWork2(1);
+				break;
+			case 3:
+				node.getLogger().info("EXECUTING BATCH WORK 3");
+				node.batchWork3(1);
+				break;
+			default:
+				System.out.println("Invalid option!");
+				System.exit(0);
+			
+			}
+			
+			node.printVariables();
+			
+			System.out.println("FINISHED!");
 		}
 		
-		node.printVariables();
-		
-		System.out.println("FINISHED!");
+	}
+
+
+	private static void printMenu() {
+		System.out.println("#### Main Menu ####");
+		System.out.println("1 - Batch work 1");
+		System.out.println("2 - Batch work 3");
+		System.out.println("3 - Batch work 3");
+		System.out.println("Please choose an option: ");
 	}
 	
 	public void printVariables() {
