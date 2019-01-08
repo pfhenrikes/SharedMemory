@@ -1,6 +1,8 @@
 package jms;
 
+import java.io.File;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.Date;
 import java.util.LinkedList;
 import java.util.Map;
@@ -103,7 +105,8 @@ public class Node implements NodeInterface, MessageListener {
 		FileHandler fh;
 		Date date = new Date();
 		try {
-			fh = new FileHandler("logs/"+id + "-" + date.toString() + ".log");
+			Path path = new File("logs" + File.separator + id + "-" + date.toString() + ".log").toPath();
+			fh = new FileHandler(path.toString());
 			logger.addHandler(fh);
 			SimpleFormatter formatter = new SimpleFormatter();
 			fh.setFormatter(formatter);
