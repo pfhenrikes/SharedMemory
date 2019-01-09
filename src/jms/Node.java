@@ -2,8 +2,10 @@ package jms;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.Serializable;
 import java.nio.file.Path;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.LinkedList;
 import java.util.Map;
@@ -31,6 +33,8 @@ import javax.jms.Session;
 import javax.jms.TextMessage;
 import javax.naming.NamingException;
 
+import org.w3c.dom.ls.LSInput;
+
 import com.sun.messaging.ConnectionConfiguration;
 import com.sun.messaging.ConnectionFactory;
 
@@ -57,7 +61,9 @@ public class Node implements NodeInterface, MessageListener {
     // Election and Leader
     private Boolean isParticipant = false;
     private int leaderId;
-        
+    
+    private ArrayList<Integer> listAllNodes = new ArrayList<>();
+    
     private ConnectionFactory myConnFactory;
     private Connection myConn;
     private Queue myQueue;
@@ -74,7 +80,7 @@ public class Node implements NodeInterface, MessageListener {
     
     
     private CountDownLatch continueSignal = new CountDownLatch(1);
-    private CountDownLatch leaderContinueSignal = new CountDownLatch(1);
+    private CountDownLatch leaderContinueSignal = new CountDownLatch(0);
     
     // Example of Shared Memory
     // Shared Memory with 4 Integers being shared
@@ -134,6 +140,7 @@ public class Node implements NodeInterface, MessageListener {
 		criticalAccessFIFO.put(addr3, new LinkedList<Integer>());
 		criticalAccessFIFO.put(addr4, new LinkedList<Integer>());
 		
+		listAllNodes.add(this.ID);
 	}
 	
 	
@@ -153,6 +160,8 @@ public class Node implements NodeInterface, MessageListener {
                 	
                 	this.nextNode = Integer.parseInt(msgText);
                 	
+                	listAllNodes.add(this.nextNode);
+                	
                 	LoginDataResponse data = new LoginDataResponse(nextNodeOld, this.leaderId);
                 	
                 	// Update NEXTNODE info in the new node
@@ -165,9 +174,6 @@ public class Node implements NodeInterface, MessageListener {
                 	}
                 	
                 	
-                	// ALTERAR ALTERAR !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-                	// CIRCULO UNIDIRECIONAL
-                	
                 	// Updating PREVIOUSNODE info in the previous NEXTNODE
                 	if(this.ID == nextNodeOld) this.previousID = this.nextNode;
                 	else {
@@ -178,12 +184,19 @@ public class Node implements NodeInterface, MessageListener {
 		                	textMsg.setText(Integer.toString(this.nextNode));
 		                	sender.send(textMsg);
                 		}
-                	}
+                	}                	
                 	
                 }
                 else if(msg.propertyExists("NEXTNODE") && msg.getBooleanProperty("NEXTNODE")) {
                 	this.nextNode = Integer.parseInt(msgText);
                 	logger.info("NEXTNODE UPDATED: " + this.nextNode);
+                	synchronized(textMsg) {
+                		textMsg.clearProperties();
+	                	textMsg.setObjectProperty("ID", Integer.toString(this.nextNode));
+	                	textMsg.setBooleanProperty("ASKFORUPDATENODE", true);
+	                	sender.send(textMsg);
+            		}
+                
                 }
                 else if(msg.propertyExists("PREVIOUSNODE") && msg.getBooleanProperty("PREVIOUSNODE")) {
                 	this.previousID = Integer.parseInt(msgText);
@@ -191,8 +204,16 @@ public class Node implements NodeInterface, MessageListener {
                 
                 else if(msg.propertyExists("LOGOUT") && msg.getBooleanProperty("LOGOUT")) {
                 	System.out.println("LOGOUT MESSAGE RECEIVED");
+                	int originId = msg.getIntProperty("ORIGINID");
                 	this.previousID = Integer.parseInt(msgText);
-                	if(Integer.parseInt(msg.getStringProperty("ORIGINID")) == this.leaderId) {
+                	
+                	for(int i=0; i<listAllNodes.size(); i++) {
+                		if(listAllNodes.get(i) == originId) {
+                			listAllNodes.remove(i);
+                		}
+                	}
+                	
+                	if(originId == this.leaderId) {
                 		this.leaderId = -1;
                 		if(this.ID != this.nextNode) {
                 			sendElection(this.ID);
@@ -308,6 +329,46 @@ public class Node implements NodeInterface, MessageListener {
                 	}
                 }
                 
+                else if(msg.propertyExists("NEWNODE") && msg.getBooleanProperty("NEWNODE")) {
+                	int id = msg.getIntProperty("NEWID");
+                	if(!(id == this.ID)) {
+	                	int before = Integer.parseInt(msgText);
+	                	
+	                	System.out.println("INSERTING ID " + id + "AFTER " + before);
+	                	
+	                	int index = listAllNodes.indexOf(before) + 1;
+	                	listAllNodes.add(index, id);
+	                	
+	                	String res = "";
+	            		for(Integer i : listAllNodes) {
+	            			res += i + " ";
+	            		}
+	            		System.out.println(res);
+	                	
+	                	synchronized(textMsg) {
+	                		textMsg.clearProperties();
+		                	textMsg.setObjectProperty("ID", Integer.toString(this.nextNode));
+		                	textMsg.setIntProperty("NEWID", id);
+		                	textMsg.setBooleanProperty("NEWNODE", true);
+		                	textMsg.setText(Integer.toString(before));
+		                	sender.send(textMsg);
+	            		}
+                	}
+                	
+                }
+                
+                else if(msg.propertyExists("ASKFORUPDATENODE") && msg.getBooleanProperty("ASKFORUPDATENODE")) {
+                	synchronized (objectMsg) {
+                		objectMsg.clearProperties();
+	                	objectMsg.setObjectProperty("ID", Integer.toString(this.previousID));
+	                	objectMsg.setBooleanProperty("ALLNODES", true);
+	                	int size = listAllNodes.size();
+	                	ArrayList<Integer> tempArray = new ArrayList<>(listAllNodes.subList(0, size));
+	                	objectMsg.setObject(tempArray);
+	                	sender.send(objectMsg);
+					}
+                }
+                
                 
             }
             
@@ -363,6 +424,27 @@ public class Node implements NodeInterface, MessageListener {
             	else if(msg.propertyExists("GRANTED") && msg.getBooleanProperty("GRANTED")) {
             		// Triggers thread waiting to continue
             		continueSignal.countDown();
+            	}
+            	
+            	else if(msg.propertyExists("ALLNODES") && msg.getBooleanProperty("ALLNODES")) {
+            		System.out.println("UPDATE LIST");
+            		ArrayList<Integer> array = (ArrayList<Integer>) ((ObjectMessage)msg).getObject();
+            		listAllNodes.addAll(array);
+            		String res = "";
+            		for(Integer i : listAllNodes) {
+            			res += i + " ";
+            		}
+            		System.out.println(res);
+            		
+            		synchronized(textMsg) {
+                		textMsg.clearProperties();
+	                	textMsg.setObjectProperty("ID", Integer.toString(nextNode));
+	                	textMsg.setIntProperty("NEWID", this.ID);
+	                	textMsg.setBooleanProperty("NEWNODE", true);
+	                	textMsg.setText(Integer.toString(this.previousID));
+	                	sender.send(textMsg);
+            		}
+            		
             	}
             	
             }    
@@ -433,6 +515,7 @@ public class Node implements NodeInterface, MessageListener {
 	
 	public void sendElection(int idLeader) {
 		leaderContinueSignal = new CountDownLatch(1);
+		System.out.println("NEXT ID " + this.nextNode);
 		try {
 			this.isParticipant = true;
 			synchronized(textMsg) {
@@ -444,7 +527,7 @@ public class Node implements NodeInterface, MessageListener {
 			}
 			
 		} catch(JMSException e) {
-			e.printStackTrace();		System.out.println("CREATING LOGGER");
+			e.printStackTrace();
 			System.exit(1);
 		}
 	}
@@ -491,14 +574,14 @@ public class Node implements NodeInterface, MessageListener {
 					textMsg.clearProperties();
 					textMsg.setObjectProperty("ID", Integer.toString(this.previousID));
 					textMsg.setBooleanProperty("NEXTNODE", true);
+					textMsg.setIntProperty("ORIGINID", this.ID);
 					textMsg.setText(Integer.toString(this.nextNode));
 					sender.send(textMsg);
-					
 					
 					textMsg.clearProperties();
 					textMsg.setObjectProperty("ID", Integer.toString(this.nextNode));
 					textMsg.setBooleanProperty("LOGOUT", true);
-					textMsg.setStringProperty("ORIGINID", Integer.toString(this.ID));
+					textMsg.setIntProperty("ORIGINID", this.ID);
 					textMsg.setText(Integer.toString(this.nextNode));
 					sender.send(textMsg);
 				}
@@ -965,11 +1048,14 @@ public class Node implements NodeInterface, MessageListener {
 			continueSignal = new CountDownLatch(2);
 			
 			while(continueSignal.getCount() > 0) {
-				System.out.println("Waiting");
 				if(leaderContinueSignal.getCount() > 0) {
+					System.out.println("WAITING FOR LEADER ELECTION");
 					leaderContinueSignal.await();
+					requestLock(addr3);
+					requestLock(addr4);
 				}
-				if(!continueSignal.await(12, TimeUnit.SECONDS)) {
+				if(!continueSignal.await(2, TimeUnit.SECONDS)) {
+					System.out.println("ELECTING LEADER");
 					logger.info("LEADER DIDN'T SEND ANT CONFIRMATION, ASSUMING IT IS DEAD");
 					sendElection(this.ID);
 				}
