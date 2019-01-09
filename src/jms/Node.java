@@ -235,7 +235,7 @@ public class Node implements NodeInterface, MessageListener {
                 	int idMsg = Integer.parseInt(msgText);
                 	logger.info("PROPOSED LEADER: " + idMsg);
                 	if(idMsg > this.ID) {
-                		logger.info("SENDING MESSAGE WITHOUT CHANGING ID");
+               		logger.info("SENDING MESSAGE WITHOUT CHANGING ID");
                 		sendElection(idMsg);
                 		this.isParticipant = true;
                 	}
@@ -810,14 +810,19 @@ public class Node implements NodeInterface, MessageListener {
 	      } 
 	    }); 
 		
-//		Timer t = new Timer();
-//        
-//        t.schedule(new TimerTask() {
-//        	@Override
-//			public void run() {
-//        		sendKeepALive();
-//        	}
-//        }, 0, 5000);
+		Timer t = new Timer();
+        
+        t.schedule(new TimerTask() {
+        	@Override
+			public void run() {
+        		System.out.println();
+        		System.out.println("ID: " + node.ID);
+        		System.out.println("Next Node: " + node.nextNode);
+        		System.out.println("Previous Node: " + node.previousID);
+        		System.out.println("Leader Node: " + node.leaderId);
+        		System.out.println("#################");
+        	}
+        }, 0, 5000);
         		       
 
 		Scanner scanner = new Scanner(System.in);
