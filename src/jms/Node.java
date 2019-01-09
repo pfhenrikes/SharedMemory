@@ -39,6 +39,8 @@ public class Node implements NodeInterface, MessageListener {
 	private String queueName = "dsv";
 	private String leaderQueueName = "dsvLeader";
 	
+	private Random random = new Random();
+	
 	// a message that will be sent to the queue
     private TextMessage textMsg;
     private ObjectMessage objectMsg;
@@ -57,11 +59,11 @@ public class Node implements NodeInterface, MessageListener {
         
     private ConnectionFactory myConnFactory;
     private Connection myConn;
-    private static Queue myQueue;
+    private Queue myQueue;
     private Queue myQueueLeader;
     private MessageConsumer receiver;
-    private static MessageProducer sender;
-    private static Session mySess;
+    private MessageProducer sender;
+    private Session mySess;
 	
     private MessageProducer senderLeader;
     private MessageConsumer receiverLeader;
@@ -611,7 +613,13 @@ public class Node implements NodeInterface, MessageListener {
 			e.printStackTrace();
 			System.out.println("LEADER IS NOT RESPONDING, INITIALIZATING ELECTION");
 			sendElection(this.ID);
-		} 
+		}
+    	
+    	
+    	SharedVariable local = sharedMemory.getVariable(address);
+    	if(sv.getId() > local.getId()) {
+    		updateSharedMemory(address, sv.getNumber(), sv.getId());
+    	}
     	
     	return sv;
 	}
@@ -666,7 +674,7 @@ public class Node implements NodeInterface, MessageListener {
  
     
     // #################################################################################################
-	public static void main(String[] args) {
+	public static void main(String[] args) throws JMSException, InterruptedException {
 		Node node;
 		
 		if(args.length > 2) {
@@ -679,45 +687,61 @@ public class Node implements NodeInterface, MessageListener {
         	node = new Node(args[0], args[1], args[1], args[1]);
         }
 		
-		
-		
+//		Runtime.getRuntime().addShutdownHook(new Thread() 
+//	    { 
+//	      public void run() 
+//	      { 
+//	        System.out.println("Exiting without login !");
+//	        node.logout();
+//	        try {
+//				node.close();
+//			} catch (JMSException e) {
+//				e.printStackTrace();
+//			}
+//	        
+//	        
+//	      } 
+//	    }); 
+//		
 //		Timer t = new Timer();
 //        
 //        t.schedule(new TimerTask() {
 //        	@Override
 //			public void run() {
-//        		System.out.println();
-//        		System.out.println("ID: " + node.ID);
-//        		System.out.println("NextNode: " + node.nextNode );
-//        		System.out.println("PreviousNode: " + node.previousID);
-//        		System.out.println("LeaderId: " + node.leaderId);
-//        		System.out.pr); = intln("=============");
+//        		sendKeepALive();
 //        	}
 //        }, 0, 5000);
         		       
-		//node.receive();
-		
+
 		Scanner scanner = new Scanner(System.in);
 				
 		while(true) {
 			printMenu();
 			int option = scanner.nextInt();	
+			System.out.println("Insert number of cycles: ");
+			int cycles = scanner.nextInt();
 			switch(option) {
 			case 1:
 				node.getLogger().info("EXECUTING BATCH WORK 1");
-				node.batchWork1(1, addr1);
+				node.batchWork1(cycles, addr1);
 				break;
 			case 2:
 				node.getLogger().info("EXECUTING BATCH WORK 2");
-				node.batchWork2(1);
+				node.batchWork2(cycles);
 				break;
 			case 3:
 				node.getLogger().info("EXECUTING BATCH WORK 3");
-				node.batchWork3(1);
+				node.batchWork3(cycles);
+				break;
+			case 4:
+				node.getLogger().info("EXECUTING BATCH WORK 4");
+				node.batchWork4(cycles);
 				break;
 			default:
-				System.out.println("Invalid option!");
-				System.exit(0);
+				System.out.println("Logging out!");
+				node.logout();
+				node.close();
+				System.exit(0);		
 			
 			}
 			
@@ -727,6 +751,10 @@ public class Node implements NodeInterface, MessageListener {
 		}
 		
 	}
+	
+	private static void sendKeepALive() {
+		
+	}
 
 
 	private static void printMenu() {
@@ -734,6 +762,8 @@ public class Node implements NodeInterface, MessageListener {
 		System.out.println("1 - Batch work 1");
 		System.out.println("2 - Batch work 3");
 		System.out.println("3 - Batch work 3");
+		System.out.println("4 - Batch work 4");
+		System.out.println("Any other number to logout");
 		System.out.println("Please choose an option: ");
 	}
 	
@@ -749,7 +779,6 @@ public class Node implements NodeInterface, MessageListener {
 	}
 	
 	private void incrementVariableWork(int address) throws InterruptedException, JMSException {
-		requestLock(address);
 		
 		if(continueSignal.getCount() > 0) {	
 			continueSignal.await();
@@ -769,10 +798,11 @@ public class Node implements NodeInterface, MessageListener {
 
 		Thread.sleep(5000);	
 			
-		releaseLock(address);
 	}
 	
 	private int batchWork1(int cycles, int address) {
+		
+		requestLock(address);
 		
 		while (cycles > 0) {
 					
@@ -795,6 +825,8 @@ public class Node implements NodeInterface, MessageListener {
 			}
 				
 		}
+		
+		releaseLock(address);
 		
 		return 0;
 	}
@@ -849,8 +881,8 @@ public class Node implements NodeInterface, MessageListener {
 			cycles--;
 		}
 		
-		releaseLock(addr2);
 		releaseLock(addr3);
+		releaseLock(addr2);
 		
 		return 0;
 	}
@@ -884,13 +916,7 @@ public class Node implements NodeInterface, MessageListener {
 			
 			
 			SharedVariable variable1 = read(addr1);
-			if(variable1.getId() > local1.getId() ) {
-				updateSharedMemory(addr1, variable1.getNumber(), variable1.getId());
-			}
 			SharedVariable variable2 = read(addr3);
-			if(variable2.getId() > local2.getId() ) {
-				updateSharedMemory(addr3, variable2.getNumber(), variable2.getId());
-			}
 			
 			int temp = variable1.getNumber() * variable2.getNumber() * 2;
 						
@@ -909,13 +935,54 @@ public class Node implements NodeInterface, MessageListener {
 		
 		}
 	
-		releaseLock(addr1);
 		releaseLock(addr3);
+		releaseLock(addr1);
 		
 		return 0;
 	}
 
+	private int batchWork4(int cycles) throws JMSException, InterruptedException {
+		
+		System.out.println("BATCH 4");
+		
+		requestLock(addr3);
+		requestLock(addr4);
+		
+		while(cycles > 0) {
+			
+			continueSignal = new CountDownLatch(2);
 
+			SharedVariable variable1 = read(addr3);
+			SharedVariable variable2 = read(addr4);
+			
+			continueSignal = new CountDownLatch(1);
+			
+			requestLock(addr1);
+			
+			SharedVariable variable3 = read(addr1);
+			
+			releaseLock(addr1);
+			
+			int temp = variable1.getNumber() - variable2.getNumber();
+			
+			Thread.sleep(random.nextInt(6) * 1000);
+			
+			if(variable3.getNumber() < temp) {
+				write(temp, addr3);
+			}
+			else {
+				write(temp, addr4);
+			}
+			
+			cycles--;
+			
+		}
+		
+		releaseLock(addr4);
+		releaseLock(addr3);
+		
+		return 0;
+	}
 	
 
 }
