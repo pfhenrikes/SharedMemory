@@ -2,7 +2,6 @@ package jms;
 
 import java.io.File;
 import java.io.IOException;
-import java.io.Serializable;
 import java.nio.file.Path;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -15,7 +14,6 @@ import java.util.Timer;
 import java.util.TimerTask;
 import java.util.TreeMap;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
 import java.util.logging.FileHandler;
 import java.util.logging.Logger;
 import java.util.logging.SimpleFormatter;
@@ -32,8 +30,6 @@ import javax.jms.Queue;
 import javax.jms.Session;
 import javax.jms.TextMessage;
 import javax.naming.NamingException;
-
-import org.w3c.dom.ls.LSInput;
 
 import com.sun.messaging.ConnectionConfiguration;
 import com.sun.messaging.ConnectionFactory;
@@ -384,6 +380,11 @@ public class Node implements NodeInterface, MessageListener {
 	            	
 	            	this.nextNode = data.getNextNode();
 	            	this.leaderId = data.getLeaderId();
+	            	
+//	            	read(addr1);
+//	            	read(addr2);
+//	            	read(addr3);
+//	            	read(addr4);
             	}
             	
             	else if(msg.propertyExists("WRITE") && msg.getBooleanProperty("WRITE")) {
@@ -705,24 +706,24 @@ public class Node implements NodeInterface, MessageListener {
     	// reply to request
     	try {
 			Message msg = tempConsumer.receive(5000); //timeout of two seconds
-			sv = (SharedVariable)((ObjectMessage)msg).getObject();
 			if(msg != null) {
-				System.out.println("RECEIVED FROM LEADER - NUMBER: " + sv.getNumber() + " ID: " + sv.getId());
 				tempConsumer.close();
+				sv = (SharedVariable)((ObjectMessage)msg).getObject();
+				SharedVariable local = sharedMemory.getVariable(address);
+		    	if(sv != null) {
+		    		System.out.println("RECEIVED FROM LEADER - NUMBER: " + sv.getNumber() + " ID: " + sv.getId());
+		    		if(sv.getId() > local.getId()) {
+			    		updateSharedMemory(address, sv.getNumber(), sv.getId());
+			    	}
+		    	}
 			}
-			else throw new JMSException("Error");
+			else throw new JMSException("Message did not arrive");
 			
 		} catch (JMSException e) {
 			e.printStackTrace();
 			System.out.println("LEADER IS NOT RESPONDING, INITIALIZATING ELECTION");
 			sendElection(this.ID);
-		}
-    	
-    	
-    	SharedVariable local = sharedMemory.getVariable(address);
-    	if(sv.getId() > local.getId()) {
-    		updateSharedMemory(address, sv.getNumber(), sv.getId());
-    	}
+		}    	
     	
     	return sv;
 	}
@@ -966,10 +967,7 @@ public class Node implements NodeInterface, MessageListener {
 		
 		while(cycles > 0) {
 			
-						
-			SharedVariable local1 = sharedMemory.getVariable(addr2);
-			SharedVariable local2 = sharedMemory.getVariable(addr3);
-			
+							
 			System.out.println("BATCH 2 - REQUESTING PERMISSION FOR ADDR2 AND ADDR3");
 			logger.info("BATCH 2 - REQUESTING PERMISSION FOR ADDR2 AND ADDR3");
 			
