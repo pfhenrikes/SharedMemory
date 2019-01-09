@@ -595,7 +595,7 @@ public class Node implements NodeInterface, MessageListener {
 					textMsg.setObjectProperty("ID", Integer.toString(this.nextNode));
 					textMsg.setBooleanProperty("LOGOUT", true);
 					textMsg.setIntProperty("ORIGINID", this.ID);
-					textMsg.setText(Integer.toString(this.nextNode));
+					textMsg.setText(Integer.toString(this.previousID));
 					sender.send(textMsg);
 				}
 				
