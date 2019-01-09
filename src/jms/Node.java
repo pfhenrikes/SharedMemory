@@ -823,7 +823,7 @@ public class Node implements NodeInterface, MessageListener {
         		System.out.println("Leader Node: " + node.leaderId);
         		System.out.println("#################");
         	}
-        }, 0, 5000);
+        }, 0, 10000);
         		       
 
 		Scanner scanner = new Scanner(System.in);
