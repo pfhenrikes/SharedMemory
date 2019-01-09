@@ -3,6 +3,7 @@ package jms;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.LinkedList;
 import java.util.Map;
@@ -104,8 +105,9 @@ public class Node implements NodeInterface, MessageListener {
 		
 		FileHandler fh;
 		Date date = new Date();
+		SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH-mm-ss") ;
 		try {
-			Path path = new File("logs" + File.separator + id + "-" + date.toString() + ".log").toPath();
+			Path path = new File("logs" + File.separator + id + "-" + dateFormat.format(date) + ".log").toPath();
 			fh = new FileHandler(path.toString());
 			logger.addHandler(fh);
 			SimpleFormatter formatter = new SimpleFormatter();
@@ -745,55 +747,6 @@ public class Node implements NodeInterface, MessageListener {
 	private Logger getLogger() {
 		return logger;
 	}
-
-
-	private void work() {
-    	int i = 0;
-		while(i<1) {
-    		Random random = new Random();
-    		
-    		try {
-				//Thread.sleep((long) (random.nextDouble()*10000));
-				
-    			int var = addr2;
-    			
-    			System.out.println("THREAD WAITING FOR CONFIRMATION");
-				
-				requestLock(var);
-							
-				if(continueSignal.getCount() > 0) {	
-					continueSignal.await();
-				}
-				System.out.println("THREAD CONTINUING");
-				
-				// Compare local variable to the leader's one
-				SharedVariable variable = read(var);
-				SharedVariable local = sharedMemory.getVariable(var);
-				
-				if(variable.getId() > local.getId() ) {
-					updateSharedMemory(var, variable.getNumber(), variable.getId());
-				}
-				
-//				if(random.nextBoolean()) {
-					System.out.println("CHANGING VALUE");
-					write(variable.getNumber() + 2, var);
-//				}
-
-				Thread.sleep(5000);	
-					
-				releaseLock(var);
-				
-				continueSignal = new CountDownLatch(1);
-				
-				i++;
-				
-			} catch (InterruptedException | JMSException e) {
-				e.printStackTrace();
-				System.exit(1);
-			}
-    		
-    	}
-    }
 	
 	private void incrementVariableWork(int address) throws InterruptedException, JMSException {
 		requestLock(address);
