@@ -203,7 +203,7 @@ public class Node implements NodeInterface, MessageListener {
                 }
                 
                 else if(msg.propertyExists("LOGOUT") && msg.getBooleanProperty("LOGOUT")) {
-                	System.out.println("LOGOUT MESSAGE RECEIVED");
+                	logger.info("LOGOUT MESSAGE RECEIVED");
                 	int originId = msg.getIntProperty("ORIGINID");
                 	this.previousID = Integer.parseInt(msgText);
                 	
@@ -231,7 +231,6 @@ public class Node implements NodeInterface, MessageListener {
                 
                 // Election process
                 else if(msg.propertyExists("ELECTION") && msg.getBooleanProperty("ELECTION")) {
-                	System.out.println("ELECTION MESSAGE RECEIVED");
                 	logger.info("ELECTION MESSAGE RECEIVED");
                 	int idMsg = Integer.parseInt(msgText);
                 	logger.info("PROPOSED LEADER: " + idMsg);
@@ -329,45 +328,49 @@ public class Node implements NodeInterface, MessageListener {
                 	}
                 }
                 
-                else if(msg.propertyExists("NEWNODE") && msg.getBooleanProperty("NEWNODE")) {
-                	int id = msg.getIntProperty("NEWID");
-                	if(!(id == this.ID)) {
-	                	int before = Integer.parseInt(msgText);
-	                	
-	                	System.out.println("INSERTING ID " + id + "AFTER " + before);
-	                	
-	                	int index = listAllNodes.indexOf(before) + 1;
-	                	listAllNodes.add(index, id);
-	                	
-	                	String res = "";
-	            		for(Integer i : listAllNodes) {
-	            			res += i + " ";
-	            		}
-	            		System.out.println(res);
-	                	
-	                	synchronized(textMsg) {
-	                		textMsg.clearProperties();
-		                	textMsg.setObjectProperty("ID", Integer.toString(this.nextNode));
-		                	textMsg.setIntProperty("NEWID", id);
-		                	textMsg.setBooleanProperty("NEWNODE", true);
-		                	textMsg.setText(Integer.toString(before));
-		                	sender.send(textMsg);
-	            		}
-                	}
-                	
-                }
-                
-                else if(msg.propertyExists("ASKFORUPDATENODE") && msg.getBooleanProperty("ASKFORUPDATENODE")) {
-                	synchronized (objectMsg) {
-                		objectMsg.clearProperties();
-	                	objectMsg.setObjectProperty("ID", Integer.toString(this.previousID));
-	                	objectMsg.setBooleanProperty("ALLNODES", true);
-	                	int size = listAllNodes.size();
-	                	ArrayList<Integer> tempArray = new ArrayList<>(listAllNodes.subList(0, size));
-	                	objectMsg.setObject(tempArray);
-	                	sender.send(objectMsg);
-					}
-                }
+//                Not implemented in time
+//                List of all nodes, so that if one failed to prove that it is alive, the previous node could start
+//                communicating with the next node
+//                
+//                else if(msg.propertyExists("NEWNODE") && msg.getBooleanProperty("NEWNODE")) {
+//                	int id = msg.getIntProperty("NEWID");
+//                	if(!(id == this.ID)) {
+//	                	int before = Integer.parseInt(msgText);
+//	                	
+//	                	System.out.println("INSERTING ID " + id + "AFTER " + before);
+//	                	
+//	                	int index = listAllNodes.indexOf(before) + 1;
+//	                	listAllNodes.add(index, id);
+//	                	
+//	                	String res = "";
+//	            		for(Integer i : listAllNodes) {
+//	            			res += i + " ";
+//	            		}
+//	            		System.out.println(res);
+//	                	
+//	                	synchronized(textMsg) {
+//	                		textMsg.clearProperties();
+//		                	textMsg.setObjectProperty("ID", Integer.toString(this.nextNode));
+//		                	textMsg.setIntProperty("NEWID", id);
+//		                	textMsg.setBooleanProperty("NEWNODE", true);
+//		                	textMsg.setText(Integer.toString(before));
+//		                	sender.send(textMsg);
+//	            		}
+//                	}
+//                	
+//                }
+//                
+//                else if(msg.propertyExists("ASKFORUPDATENODE") && msg.getBooleanProperty("ASKFORUPDATENODE")) {
+//                	synchronized (objectMsg) {
+//                		objectMsg.clearProperties();
+//	                	objectMsg.setObjectProperty("ID", Integer.toString(this.previousID));
+//	                	objectMsg.setBooleanProperty("ALLNODES", true);
+//	                	int size = listAllNodes.size();
+//	                	ArrayList<Integer> tempArray = new ArrayList<>(listAllNodes.subList(0, size));
+//	                	objectMsg.setObject(tempArray);
+//	                	sender.send(objectMsg);
+//					}
+//                }
                 
                 
             }
@@ -392,7 +395,7 @@ public class Node implements NodeInterface, MessageListener {
             		SharedVariable variable = (SharedVariable) ((ObjectMessage) msg).getObject();
             		
             		System.out.println("WRITE " + address + " - NUMBER: " + variable.getNumber() + " ID: "+variable.getId());
-            		
+            		logger.info("WRITE " + address + " - NUMBER: " + variable.getNumber() + " ID: "+variable.getId());
             		SharedVariable localVariable = sharedMemory.getVariable(address);
             		
             		if(localVariable.getId() < variable.getId()) {
@@ -406,46 +409,49 @@ public class Node implements NodeInterface, MessageListener {
             	
             	else if(msg.propertyExists("UPDATEMEMORY") && msg.getBooleanProperty("UPDATEMEMORY")) {
             		if(this.ID != this.leaderId) {
-            			System.out.println("UPDATING SHARED VARIABLE");
             			int address = 0;
             			if(msg.propertyExists("ADDRESS")) 
                 			address = msg.getIntProperty("ADDRESS");
             			SharedVariable variable = (SharedVariable) ((ObjectMessage)msg).getObject();
+            			logger.info("UPDATING SHARED MEMEORY ADDRESS " + address);
 
             			updateSharedMemory(address, variable.getNumber(), variable.getId());
             			propagateWrite(address);
-            			System.out.println(address + " NUMBER: " + variable.getNumber() + " ID: " + variable.getId());
+//            			System.out.println(address + " NUMBER: " + variable.getNumber() + " ID: " + variable.getId());
              		}
             		else {
-            			System.out.println("PROPAGATE FINISHED");
+            			logger.info("PROPAGATING WRITE FINISHED");
             		}
             	}
             	
             	else if(msg.propertyExists("GRANTED") && msg.getBooleanProperty("GRANTED")) {
             		// Triggers thread waiting to continue
             		continueSignal.countDown();
+            		logger.info("LOCK WAS GRANTED");
             	}
             	
-            	else if(msg.propertyExists("ALLNODES") && msg.getBooleanProperty("ALLNODES")) {
-            		System.out.println("UPDATE LIST");
-            		ArrayList<Integer> array = (ArrayList<Integer>) ((ObjectMessage)msg).getObject();
-            		listAllNodes.addAll(array);
-            		String res = "";
-            		for(Integer i : listAllNodes) {
-            			res += i + " ";
-            		}
-            		System.out.println(res);
-            		
-            		synchronized(textMsg) {
-                		textMsg.clearProperties();
-	                	textMsg.setObjectProperty("ID", Integer.toString(nextNode));
-	                	textMsg.setIntProperty("NEWID", this.ID);
-	                	textMsg.setBooleanProperty("NEWNODE", true);
-	                	textMsg.setText(Integer.toString(this.previousID));
-	                	sender.send(textMsg);
-            		}
-            		
-            	}
+//            	Would be used to implement a list containing all nodes
+//            	
+//            	else if(msg.propertyExists("ALLNODES") && msg.getBooleanProperty("ALLNODES")) {
+//            		System.out.println("UPDATE LIST");
+//            		ArrayList<Integer> array = (ArrayList<Integer>) ((ObjectMessage)msg).getObject();
+//            		listAllNodes.addAll(array);
+//            		String res = "";
+//            		for(Integer i : listAllNodes) {
+//            			res += i + " ";
+//            		}
+//            		System.out.println(res);
+//            		
+//            		synchronized(textMsg) {
+//                		textMsg.clearProperties();
+//	                	textMsg.setObjectProperty("ID", Integer.toString(nextNode));
+//	                	textMsg.setIntProperty("NEWID", this.ID);
+//	                	textMsg.setBooleanProperty("NEWNODE", true);
+//	                	textMsg.setText(Integer.toString(this.previousID));
+//	                	sender.send(textMsg);
+//            		}
+//            		
+//            	}
             	
             }    
             
@@ -456,6 +462,7 @@ public class Node implements NodeInterface, MessageListener {
                 	
 	}
 	
+	// Send permission granted to Node with ID id
 	private void sendPermissionGranted(int id) {
 		try {
 			synchronized(objectMsg) {
@@ -464,17 +471,17 @@ public class Node implements NodeInterface, MessageListener {
 				objectMsg.setStringProperty("ID", Integer.toString(id));
 				//objectMsg.setObject(sharedVariable);
 				sender.send(objectMsg);
-				System.out.println("PERMISSION GRANTED SENT");
+				logger.info("PERMISSION GRANTED SENT TO ID " + id);
 			}
 		} catch (JMSException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
+			System.exit(1);
 		}
 		
 	}
 
 
-	// send modified variable to every node
+	// Send modified address to every node
 	private void propagateWrite(int address) {
 		try {
 			synchronized(objectMsg) {
@@ -488,14 +495,14 @@ public class Node implements NodeInterface, MessageListener {
 			}
 			
 		} catch (JMSException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
+			System.exit(1);
 		}
 		
 		
 	}
 
-
+	// Send election has finished to all nodes
 	public void sendElectionFinished() {
 		try {
 			this.isParticipant = false;
@@ -513,8 +520,9 @@ public class Node implements NodeInterface, MessageListener {
 		}
 	}
 	
+	// Send election message containing the id of the leader
 	public void sendElection(int idLeader) {
-		leaderContinueSignal = new CountDownLatch(1);
+//		leaderContinueSignal = new CountDownLatch(1);
 		System.out.println("NEXT ID " + this.nextNode);
 		try {
 			this.isParticipant = true;
@@ -532,22 +540,26 @@ public class Node implements NodeInterface, MessageListener {
 		}
 	}
 	
-	private void sendHeartbeat() {
-		try {
-			synchronized(textMsg) {
-				textMsg.clearProperties();
-				textMsg.setObjectProperty("ID", Integer.toString(this.nextNode));
-				textMsg.setBooleanProperty("HEARTBEAT", true);
-				textMsg.setText(Integer.toString(this.ID));
-				sender.send(textMsg);
-			}
-		} catch(JMSException e) {
-			e.printStackTrace();
-			System.exit(1);
-		}
-	}
+//	Would be used to prove life to the next node
+//	
+//	private void sendHeartbeat() {
+//		try {
+//			synchronized(textMsg) {
+//				textMsg.clearProperties();
+//				textMsg.setObjectProperty("ID", Integer.toString(this.nextNode));
+//				textMsg.setBooleanProperty("HEARTBEAT", true);
+//				textMsg.setText(Integer.toString(this.ID));
+//				sender.send(textMsg);
+//			}
+//		} catch(JMSException e) {
+//			e.printStackTrace();
+//			System.exit(1);
+//		}
+//	}
 
+	
 	@Override
+	// Send login request to the next node
 	public void login(int arg1) {
 		try {
 			synchronized(textMsg) {
@@ -566,6 +578,7 @@ public class Node implements NodeInterface, MessageListener {
 	}
 
 	@Override
+	// Updating the next node and the previous node because this node is logging out
 	public void logout() {
 		if(this.ID != this.nextNode && this.ID != this.previousID) {
 			try {
@@ -653,6 +666,7 @@ public class Node implements NodeInterface, MessageListener {
         }
     }
         
+    // Update a memory address with a number and the id of writing
     private void updateSharedMemory(int address, int number, int id) {
     	SharedVariable local = sharedMemory.getVariable(address);
     	local.setNumber(number);
@@ -663,6 +677,7 @@ public class Node implements NodeInterface, MessageListener {
     
     
     @Override
+    // Reads an address from the leader's shared memory and updates it's own address
 	public SharedVariable read(int address) {
 		MessageConsumer tempConsumer = null;		
     	Queue tempQueue = null;
@@ -714,6 +729,7 @@ public class Node implements NodeInterface, MessageListener {
 
 
 	@Override
+	// Updates the address in the leader's shared memory with the value specified
 	public void write(int value, int address) throws JMSException {
 		SharedVariable local = sharedMemory.getVariable(address);
 		updateSharedMemory(address, value, local.getId() + 1);
@@ -726,6 +742,7 @@ public class Node implements NodeInterface, MessageListener {
 		}
 	}
 	
+	// Send a lock request for the address to the leader, so that the process can enter a critical zone safely
 	private void requestLock(int address) {
 		System.out.println("REQUEST PERMISSION FOR " + address);
 		try {
@@ -744,6 +761,7 @@ public class Node implements NodeInterface, MessageListener {
 		
 	}
 	
+	// Send info to leader so that the lock for the address may be released
 	private void releaseLock(int address) {
 		try {
 			synchronized (textMsg) {
@@ -761,7 +779,7 @@ public class Node implements NodeInterface, MessageListener {
 	
  
     
-    // #################################################################################################
+    // ################################### Main ###################################################
 	public static void main(String[] args) throws JMSException, InterruptedException {
 		Node node;
 		
@@ -775,22 +793,23 @@ public class Node implements NodeInterface, MessageListener {
         	node = new Node(args[0], args[1], args[1], args[1]);
         }
 		
-//		Runtime.getRuntime().addShutdownHook(new Thread() 
-//	    { 
-//	      public void run() 
-//	      { 
-//	        System.out.println("Exiting without login !");
-//	        node.logout();
-//	        try {
-//				node.close();
-//			} catch (JMSException e) {
-//				e.printStackTrace();
-//			}
-//	        
-//	        
-//	      } 
-//	    }); 
-//		
+		Runtime.getRuntime().addShutdownHook(new Thread() 
+	    { 
+	      public void run() 
+	      { 
+	        System.out.println("SYSTEM EXITING!");
+	        node.getLogger().info("SYSTEM EXITING!");
+	        node.logout();
+	        try {
+				node.close();
+			} catch (JMSException e) {
+				e.printStackTrace();
+			}
+	        
+	        
+	      } 
+	    }); 
+		
 //		Timer t = new Timer();
 //        
 //        t.schedule(new TimerTask() {
@@ -808,6 +827,8 @@ public class Node implements NodeInterface, MessageListener {
 			int option = scanner.nextInt();	
 			int cycles = 0;
 			switch(option) {
+			case 0:
+				break;
 			case 1:
 				System.out.println("Insert number of cycles: ");
 				cycles = scanner.nextInt();
@@ -832,50 +853,53 @@ public class Node implements NodeInterface, MessageListener {
 				node.getLogger().info("EXECUTING BATCH WORK 4");
 				node.batchWork4(cycles);
 				break;
+			case 5:
+				System.out.println("Insert number of cycles: ");
+				cycles = scanner.nextInt();
+				node.getLogger().info("EXECUTING BATCH WORK 5");
+				node.batchWork5(cycles);
+				break;
 			default:
 				System.out.println("Logging out!");
-				node.logout();
-				node.close();
 				System.exit(0);		
 			
 			}
 			
 			node.printVariables();
-			
-			System.out.println("FINISHED!");
 		}
 		
 	}
 	
-	private static void sendKeepALive() {
-		
-	}
-
-
+	// print the main menu
 	private static void printMenu() {
 		System.out.println("#### Main Menu ####");
+		System.out.println("0 - Print Shared Memory");
 		System.out.println("1 - Batch work 1");
 		System.out.println("2 - Batch work 3");
 		System.out.println("3 - Batch work 3");
 		System.out.println("4 - Batch work 4");
+		System.out.println("5 - Batch work 5");
 		System.out.println("Any other number to logout");
 		System.out.println("Please choose an option: ");
 	}
 	
+	// print addresses of the shared variable
 	public void printVariables() {
 		System.out.println("1-"+sharedMemory.getVariable(addr1).getNumber());
 		System.out.println("2-"+sharedMemory.getVariable(addr2).getNumber());
 		System.out.println("3-"+sharedMemory.getVariable(addr3).getNumber());
 		System.out.println("4-"+sharedMemory.getVariable(addr4).getNumber());
 	}
-	
+		
 	private Logger getLogger() {
 		return logger;
 	}
 	
+	// function that increments the value stored in address
 	private void incrementVariableWork(int address) throws InterruptedException, JMSException {
-		
+		// wait for 2 lock confirmations
 		if(continueSignal.getCount() > 0) {	
+			System.out.println("WAITING FOR PERMISSION");
 			continueSignal.await();
 		}
 		System.out.println("PERMISSION GRANTED");
@@ -883,18 +907,17 @@ public class Node implements NodeInterface, MessageListener {
 		// Compare local variable to the leader's one
 		SharedVariable variable = read(address);
 		SharedVariable local = sharedMemory.getVariable(address);
-		
 		if(variable.getId() > local.getId() ) {
 			updateSharedMemory(addr1, variable.getNumber(), variable.getId());
 		}
 		
-		System.out.println("CHANGING VALUE");
 		write(variable.getNumber() + 1, address);
 
 		Thread.sleep(5000);	
 			
 	}
 	
+	// Batch work 1 - increments addr1
 	private int batchWork1(int cycles, int address) {
 		
 		requestLock(address);
@@ -903,19 +926,20 @@ public class Node implements NodeInterface, MessageListener {
 					
 			try {
 				
-				System.out.println("BATCH 1 - REQUESTING PERMISSION FOR " + address);			
+				System.out.println("BATCH 1 - REQUESTING PERMISSION FOR " + address);
+				logger.info("BATCH 1 - REQUESTING PERMISSION FOR " + address);
 				
 				incrementVariableWork(address);
-				
-				continueSignal = new CountDownLatch(1);
 				
 				cycles--;				
 				
 			} catch (InterruptedException e) {
 				e.printStackTrace();
+				releaseLock(address);
 				return 1;
 			} catch (JMSException e) {
 				e.printStackTrace();
+				releaseLock(address);
 				return 1;
 			}
 				
@@ -923,21 +947,31 @@ public class Node implements NodeInterface, MessageListener {
 		
 		releaseLock(address);
 		
+		logger.info("BATCH WORK FINISHED!");
+		
 		return 0;
 	}
 	
+	// batch work 2 - adds addr2 and addr3 together and stores it in addr2
 	private int batchWork2(int cycles) {
+		requestLock(addr2);
+		requestLock(addr3);
+		
+		continueSignal = new CountDownLatch(2);
+		
 		while(cycles > 0) {
 			
-			continueSignal = new CountDownLatch(2);
-			
+						
 			SharedVariable local1 = sharedMemory.getVariable(addr2);
 			SharedVariable local2 = sharedMemory.getVariable(addr3);
 			
 			System.out.println("BATCH 2 - REQUESTING PERMISSION FOR ADDR2 AND ADDR3");
-			requestLock(addr2);
-			requestLock(addr3);
-						
+			logger.info("BATCH 2 - REQUESTING PERMISSION FOR ADDR2 AND ADDR3");
+			
+			// wait for 2 lock confirmations
+			// should wait for answer from leader
+			// if no answer, assume leader is dead and start election
+			// NOT IMPLEMENTED CORRECTLY
 			if(continueSignal.getCount() > 0) {
 				try {
 					continueSignal.await();
@@ -952,13 +986,7 @@ public class Node implements NodeInterface, MessageListener {
 			
 			
 			SharedVariable variable1 = read(addr2);
-			if(variable1.getId() > local1.getId() ) {
-				updateSharedMemory(addr2, variable1.getNumber(), variable1.getId());
-			}
 			SharedVariable variable2 = read(addr3);
-			if(variable2.getId() > local2.getId() ) {
-				updateSharedMemory(addr3, variable2.getNumber(), variable2.getId());
-			}
 			
 			int temp = variable1.getNumber() + variable2.getNumber();
 						
@@ -982,47 +1010,47 @@ public class Node implements NodeInterface, MessageListener {
 		return 0;
 	}
 	
+	// batch work 3 - adds addr2, addr3 and addr4 together, divides by 3 and stores it in addr4
 	private int batchWork3(int cycles) {
 		
 		System.out.println("BATCH 3 - REQUESTING PERMISSION FOR ADDR1 AND ADDR3");
-		requestLock(addr1);
+		requestLock(addr2);
 		requestLock(addr3);
+		requestLock(addr4);
+		continueSignal = new CountDownLatch(2);
 		
 		while(cycles > 0) {
-		
-			continueSignal = new CountDownLatch(2);
-			
-			SharedVariable local1 = sharedMemory.getVariable(addr1);
-			SharedVariable local2 = sharedMemory.getVariable(addr3);
-			
-			
-						
+			// wait for 2 lock confirmations
+			// should wait for answer from leader
+			// if no answer, assume leader is dead and start election
+			// NOT IMPLEMENTED CORRECTLY						
 			if(continueSignal.getCount() > 0) {
 				try {
 					continueSignal.await();
 				} catch (InterruptedException e) {
 					e.printStackTrace();
-					releaseLock(addr1);
+					releaseLock(addr4);
 					releaseLock(addr3);
+					releaseLock(addr2);
 					return 1;
 				}
 			}
 			
-			
-			
-			SharedVariable variable1 = read(addr1);
+			SharedVariable variable1 = read(addr2);
 			SharedVariable variable2 = read(addr3);
+			SharedVariable variable3 = read(addr4);
 			
-			int temp = variable1.getNumber() * variable2.getNumber() * 2;
+			int temp = variable1.getNumber() * variable2.getNumber() * variable3.getNumber() / 3;
 						
 			try {
 				Thread.sleep(3000);
 				
-				write(temp, addr1);
+				write(temp, addr4);
 			} catch (JMSException | InterruptedException e) {
 				e.printStackTrace();
-				releaseLock(addr1);
+				releaseLock(addr4);
 				releaseLock(addr3);
+				releaseLock(addr2);
 				return 1;
 			}
 			
@@ -1030,68 +1058,149 @@ public class Node implements NodeInterface, MessageListener {
 		
 		}
 	
+		releaseLock(addr4);
 		releaseLock(addr3);
-		releaseLock(addr1);
-		
+		releaseLock(addr2);
 		return 0;
 	}
 
-	private int batchWork4(int cycles) throws JMSException, InterruptedException {
+	// batch work 4 - subtracts addr3 to addr4 and compares it with addr1, if it's bigger stores in addr4, else stores it in addr3
+	private int batchWork4(int cycles) {
 		
 		System.out.println("BATCH 4");
+		logger.info("BATCH 4");
 		
 		requestLock(addr3);
 		requestLock(addr4);
 		
-		while(cycles > 0) {
-			
-			continueSignal = new CountDownLatch(2);
-			
-			while(continueSignal.getCount() > 0) {
-				if(leaderContinueSignal.getCount() > 0) {
-					System.out.println("WAITING FOR LEADER ELECTION");
-					leaderContinueSignal.await();
-					requestLock(addr3);
-					requestLock(addr4);
+		continueSignal = new CountDownLatch(2);
+		
+		try {
+			while(cycles > 0) {
+				// wait for 2 lock confirmations
+				// should wait for answer from leader
+				// if no answer, assume leader is dead and start election
+				// NOT IMPLEMENTED CORRECTLY					
+				while(continueSignal.getCount() > 0) {
+//					if(leaderContinueSignal.getCount() > 0) {
+//						System.out.println("WAITING FOR LEADER ELECTION");
+//						leaderContinueSignal.await();
+//						requestLock(addr3);
+//						requestLock(addr4);
+//					}
+//					if(!continueSignal.await(2, TimeUnit.SECONDS)) {
+//						System.out.println("ELECTING LEADER");
+//						logger.info("LEADER DIDN'T SEND ANT CONFIRMATION, ASSUMING IT IS DEAD");
+//						sendElection(this.ID);
+//					}
+					continueSignal.await();
 				}
-				if(!continueSignal.await(2, TimeUnit.SECONDS)) {
-					System.out.println("ELECTING LEADER");
-					logger.info("LEADER DIDN'T SEND ANT CONFIRMATION, ASSUMING IT IS DEAD");
-					sendElection(this.ID);
+				
+				SharedVariable variable1 = read(addr3);
+				SharedVariable variable2 = read(addr4);
+				
+				
+				continueSignal = new CountDownLatch(1);
+				
+				requestLock(addr1);
+				
+				SharedVariable variable3 = read(addr1);
+				
+				releaseLock(addr1);
+				
+				int temp = variable2.getNumber() - variable1.getNumber();
+				
+				Thread.sleep(random.nextInt(6) * 1000);
+				
+				if(variable3.getNumber() < temp) {
+					write(temp, addr3);
 				}
+				else {
+					write(temp, addr4);
+				}
+				
+				cycles--;
+				
 			}
 			
-			SharedVariable variable1 = read(addr3);
-			SharedVariable variable2 = read(addr4);
+			releaseLock(addr4);
+			releaseLock(addr3);
 			
+			return 0;
+		}
+		catch(Exception e) {
+			e.printStackTrace();
+			releaseLock(addr4);
+			releaseLock(addr3);
+			return 1;
+		}
+	}
+	
+	// batch work 5 -  adds all shared addresses together and stores the result in addr1
+	private int batchWork5(int cycles) {
+		System.out.println("BATCH 4");
+		logger.info("BATCH 4");
+		
+		requestLock(addr1);
+		requestLock(addr2);
+		requestLock(addr3);
+		requestLock(addr4);
+		
+		continueSignal = new CountDownLatch(4);
+		
+		try {
+			while(cycles > 0) {
+				
+				// wait for 4 lock confirmations
+				// should wait for answer from leader
+				// if no answer, assume leader is dead and start election
+				// NOT IMPLEMENTED CORRECTLY					
+				while(continueSignal.getCount() > 0) {
+//					if(leaderContinueSignal.getCount() > 0) {
+//						System.out.println("WAITING FOR LEADER ELECTION");
+//						leaderContinueSignal.await();
+//						requestLock(addr3);
+//						requestLock(addr4);
+//					}
+//					if(!continueSignal.await(2, TimeUnit.SECONDS)) {
+//						System.out.println("ELECTING LEADER");
+//						logger.info("LEADER DIDN'T SEND ANT CONFIRMATION, ASSUMING IT IS DEAD");
+//						sendElection(this.ID);
+//					}
+					
+					continueSignal.await();
+				}
+				
+				SharedVariable variable1 = read(addr1);
+				SharedVariable variable2 = read(addr2);
+				SharedVariable variable3 = read(addr3);
+				SharedVariable variable4 = read(addr4);
+				
+				int temp = variable1.getNumber() + variable2.getNumber() + variable3.getNumber() + variable4.getNumber();
+				
+				Thread.sleep(random.nextInt(6) * 1000);
+				
+				write(temp, addr1);
+				
+				cycles--;
+				
+			}
 			
-			continueSignal = new CountDownLatch(1);
-			
-			requestLock(addr1);
-			
-			SharedVariable variable3 = read(addr1);
-			
+			releaseLock(addr4);
+			releaseLock(addr3);
+			releaseLock(addr2);
 			releaseLock(addr1);
 			
-			int temp = variable1.getNumber() - variable2.getNumber();
-			
-			Thread.sleep(random.nextInt(6) * 1000);
-			
-			if(variable3.getNumber() < temp) {
-				write(temp, addr3);
-			}
-			else {
-				write(temp, addr4);
-			}
-			
-			cycles--;
-			
+			return 0;
 		}
-		
-		releaseLock(addr4);
-		releaseLock(addr3);
-		
-		return 0;
+		catch(Exception e) {
+			e.printStackTrace();
+			releaseLock(addr4);
+			releaseLock(addr3);
+			releaseLock(addr2);
+			releaseLock(addr1);
+			return 1;
+		}
 	}
 	
 
