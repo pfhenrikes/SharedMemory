@@ -13,6 +13,7 @@ import java.util.Timer;
 import java.util.TimerTask;
 import java.util.TreeMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.FileHandler;
 import java.util.logging.Logger;
 import java.util.logging.SimpleFormatter;
@@ -73,6 +74,7 @@ public class Node implements NodeInterface, MessageListener {
     
     
     private CountDownLatch continueSignal = new CountDownLatch(1);
+    private CountDownLatch leaderContinueSignal = new CountDownLatch(1);
     
     // Example of Shared Memory
     // Shared Memory with 4 Integers being shared
@@ -234,6 +236,7 @@ public class Node implements NodeInterface, MessageListener {
                 	}
                 }
                 
+                // propagating the leader's id
                 else if(msg.propertyExists("LEADER") && msg.getBooleanProperty("LEADER")) {
                 	int leader = Integer.parseInt(msgText);
                 	System.out.println("NEW LEADER: " + leader); 
@@ -249,6 +252,7 @@ public class Node implements NodeInterface, MessageListener {
                 		this.leaderId = Integer.parseInt(msgText);
 	                	sendElectionFinished();
                 	}
+                	leaderContinueSignal.countDown();
                 }
                 
                 // Leader is asked to return the value of the variable in the address given
@@ -428,6 +432,7 @@ public class Node implements NodeInterface, MessageListener {
 	}
 	
 	public void sendElection(int idLeader) {
+		leaderContinueSignal = new CountDownLatch(1);
 		try {
 			this.isParticipant = true;
 			synchronized(textMsg) {
@@ -718,22 +723,29 @@ public class Node implements NodeInterface, MessageListener {
 		while(true) {
 			printMenu();
 			int option = scanner.nextInt();	
-			System.out.println("Insert number of cycles: ");
-			int cycles = scanner.nextInt();
+			int cycles = 0;
 			switch(option) {
 			case 1:
+				System.out.println("Insert number of cycles: ");
+				cycles = scanner.nextInt();
 				node.getLogger().info("EXECUTING BATCH WORK 1");
 				node.batchWork1(cycles, addr1);
 				break;
 			case 2:
+				System.out.println("Insert number of cycles: ");
+				cycles = scanner.nextInt();
 				node.getLogger().info("EXECUTING BATCH WORK 2");
 				node.batchWork2(cycles);
 				break;
 			case 3:
+				System.out.println("Insert number of cycles: ");
+				cycles = scanner.nextInt();
 				node.getLogger().info("EXECUTING BATCH WORK 3");
 				node.batchWork3(cycles);
 				break;
 			case 4:
+				System.out.println("Insert number of cycles: ");
+				cycles = scanner.nextInt();
 				node.getLogger().info("EXECUTING BATCH WORK 4");
 				node.batchWork4(cycles);
 				break;
@@ -951,9 +963,21 @@ public class Node implements NodeInterface, MessageListener {
 		while(cycles > 0) {
 			
 			continueSignal = new CountDownLatch(2);
-
+			
+			while(continueSignal.getCount() > 0) {
+				System.out.println("Waiting");
+				if(leaderContinueSignal.getCount() > 0) {
+					leaderContinueSignal.await();
+				}
+				if(!continueSignal.await(12, TimeUnit.SECONDS)) {
+					logger.info("LEADER DIDN'T SEND ANT CONFIRMATION, ASSUMING IT IS DEAD");
+					sendElection(this.ID);
+				}
+			}
+			
 			SharedVariable variable1 = read(addr3);
 			SharedVariable variable2 = read(addr4);
+			
 			
 			continueSignal = new CountDownLatch(1);
 			
